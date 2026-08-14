@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ReUse Hub — India's hyperlocal resource network</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/styles.css">
+<script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
+</head>
+<body>
+<header>
+  <div class="nav-capsule">
+    <div class="logo-wrap">
+      <div class="logo"><span class="logo-mark"><i data-lucide="leaf"></i></span>ReUse <span class="logo-accent">Hub</span></div>
+    </div>
+    <div class="section-tabs" id="sectionTabs">
+      <button class="section-tab active" data-section="consumer">Give &amp; Take</button>
+      <button class="section-tab" data-section="business_waste">Business Surplus</button>
+      <button class="section-tab" data-section="requests">Requests</button>
+    </div>
+    <div class="capsule-actions">
+      <button class="primary-btn" id="postBtn"><i data-lucide="plus"></i> Post item</button>
+      <nav id="nav"></nav>
+    </div>
+  </div>
+</header>
+<main>
+  <div id="verifyBanner"></div>
+
+  <section class="nearby-activity nearby-activity-tight" id="nearbySection">
+    <div class="nearby-map" aria-hidden="true">
+      <div class="nearby-map-bg"></div>
+      <div class="nearby-road r1"></div>
+      <div class="nearby-road r2"></div>
+      <div class="nearby-pin"><i data-lucide="map-pin"></i></div>
+      <div class="nearby-orbit o1" title="Food Rescue">🍲</div>
+      <div class="nearby-orbit o2" title="Community help">🤝</div>
+      <div class="nearby-orbit o3" title="Items">🪑</div>
+      <div class="nearby-orbit o4" title="Business surplus">📦</div>
+    </div>
+    <div class="nearby-content">
+      <h2 class="nearby-title"><i data-lucide="map-pin"></i> See what's happening near you</h2>
+      <p class="nearby-sub">People are giving, finding and helping in your area. Explore the latest items and requests nearby.</p>
+      <div class="nearby-counts" id="nearbyCounts"></div>
+      <div class="nearby-recent" id="nearbyRecent"></div>
+      <div class="nearby-actions">
+        <button class="nearby-cta" id="nearbyCtaBtn"><i data-lucide="map-pin"></i> Explore nearby</button>
+        <button class="nearby-impact-link" id="impactStripBtn">📊 See our impact</button>
+      </div>
+    </div>
+  </section>
+
+  <div class="hero-banner">
+    <div class="hero-glow"></div>
+    <div class="hero-particle p1" aria-hidden="true"></div>
+    <div class="hero-particle p2" aria-hidden="true"></div>
+    <div class="hero-particle p3" aria-hidden="true"></div>
+    <div class="hero-particle p4" aria-hidden="true"></div>
+    <div class="hero-flex">
+      <div class="hero-left">
+        <span class="hero-badge"><i data-lucide="sparkles"></i> ReUse Community 2.0</span>
+        <div class="hero-slides" id="heroSlides">
+          <div class="hero-slide active" data-slide="0">
+            <h1 class="hero-title">Reduce waste.<br>Build community.<br>Reuse better.</h1>
+            <p class="section-hint hero-hint" id="sectionHint">Post things you don't want, or find something free/paid/exchange/rent nearby.</p>
+            <p class="hero-quote">"One man's trash is another man's treasure."</p>
+          </div>
+          <div class="hero-slide" data-slide="1">
+            <h1 class="hero-title">Good food shouldn't<br>go to waste.</h1>
+            <p class="hero-hint">Restaurants, weddings and events can quickly share surplus food with people nearby.</p>
+          </div>
+          <div class="hero-slide" data-slide="2">
+            <h1 class="hero-title">Businesses have<br>surplus too.</h1>
+            <p class="hero-hint">Give equipment, materials and reusable goods another life.</p>
+          </div>
+          <div class="hero-slide" data-slide="3">
+            <h1 class="hero-title">See what's happening<br>near you.</h1>
+            <p class="hero-hint">Find items, requests and people helping in your area.</p>
+          </div>
+        </div>
+        <div class="hero-search-wrap">
+          <div class="searchbar">
+            <i data-lucide="search" class="searchbar-icon"></i>
+            <input id="search" placeholder="Search laptops, books, furniture, tools...">
+            <input id="locationFilter" placeholder="📍 Filter by area/city..." style="max-width:200px">
+            <select id="priceFilter">
+              <option value="">All offer types</option>
+              <option value="free">Free</option>
+              <option value="paid">Paid</option>
+              <option value="exchange">Exchange</option>
+              <option value="rent">Rent</option>
+            </select>
+            <button class="filters-btn" type="button" id="filtersBtn"><i data-lucide="sliders-horizontal"></i> Filters</button>
+          </div>
+          <div class="filters-panel" id="filtersPanel" style="display:none">
+            <label class="urgent-check"><input type="checkbox" id="filterUrgent"> 🔥 Urgent only</label>
+            <label class="filters-sort-label">Sort:
+              <select id="filterSort">
+                <option value="newest">Newest</option>
+                <option value="urgent">Urgent first</option>
+                <option value="price_low">Price: Low → High</option>
+              </select>
+            </label>
+          </div>
+        </div>
+      </div>
+      <div class="hero-visual" aria-hidden="true">
+        <div class="hero-visual-blob"></div>
+        <div class="hero-visual-card c1">🪑</div>
+        <div class="hero-visual-card c2">🌱</div>
+        <div class="hero-visual-card c3">📦</div>
+      </div>
+    </div>
+    <div class="hero-footer">
+      <button class="hero-cta" id="heroPostBtn"><span class="hero-cta-label">Post an item</span> <i data-lucide="arrow-up-right"></i></button>
+      <div class="hero-carousel-controls">
+        <button type="button" class="hero-arrow" id="heroPrevBtn" aria-label="Previous slide"><i data-lucide="chevron-left"></i></button>
+        <div class="hero-dots" id="heroDots">
+          <button type="button" class="hero-dot active" data-slide="0" aria-label="Show slide 1"></button>
+          <button type="button" class="hero-dot" data-slide="1" aria-label="Show slide 2"></button>
+          <button type="button" class="hero-dot" data-slide="2" aria-label="Show slide 3"></button>
+          <button type="button" class="hero-dot" data-slide="3" aria-label="Show slide 4"></button>
+        </div>
+        <button type="button" class="hero-arrow" id="heroNextBtn" aria-label="Next slide"><i data-lucide="chevron-right"></i></button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Mobile-only quick actions row (Post Item / Post Request together) — desktop already has
+       "+Post item" in the header and the hero CTA, so this is hidden there (see
+       .mobile-only-section in styles.css) and only shown at the mobile breakpoint. -->
+  <div class="quick-actions mobile-only-section" id="quickActionsSection">
+    <button type="button" class="quick-action-card" id="quickPostItemBtn">
+      <span class="quick-action-icon"><i data-lucide="package-plus"></i></span>
+      <span class="quick-action-text"><strong>Post an Item</strong><small>Give something away</small></span>
+    </button>
+    <button type="button" class="quick-action-card" id="quickPostRequestBtn">
+      <span class="quick-action-icon"><i data-lucide="hand-heart"></i></span>
+      <span class="quick-action-text"><strong>Post a Request</strong><small>Need something?</small></span>
+    </button>
+  </div>
+
+  <div class="stats-strip" id="statsStrip"></div>
+
+  <section class="champions-section" id="championsSection"></section>
+
+  <div id="urgentSection" class="homepage-section"></div>
+  <div id="urgentFoodSection" class="homepage-section"></div>
+  <div class="req-type-tabs" id="reqTypeTabs" style="display:none">
+    <button class="chip active" data-rt="thing">Things I need</button>
+    <button class="chip" data-rt="service">Services I need</button>
+  </div>
+
+  <div id="trendingSection"></div>
+  <div id="businessTeaserPreviewSection" class="homepage-section mobile-only-section"></div>
+  <div id="businessSurplusIntro" class="homepage-section"></div>
+
+  <div class="page-layout">
+    <aside class="sidebar">
+      <h3 class="sidebar-title">Categories</h3>
+      <div class="categories" id="categories"></div>
+    </aside>
+    <div class="main-col">
+      <div id="content"></div>
+    </div>
+    <aside class="eco-panel" id="ecoPanel">
+      <div class="eco-head"><i data-lucide="globe"></i> Impact Tracker</div>
+      <div class="eco-stats" id="ecoStats"></div>
+      <button type="button" class="eco-view-full-btn" id="ecoViewFullBtn">View Full Impact</button>
+      <div class="eco-earth">
+        <div class="eco-earth-icon">🌍</div>
+        <p>Building a circular economy, one item at a time.</p>
+      </div>
+      <div id="ecoExtra"></div>
+      <div id="ecoNearby"></div>
+    </aside>
+  </div>
+
+  <div id="communitySection" class="homepage-section"></div>
+  <div id="businessTeaserSection" class="homepage-section"></div>
+  <div id="collectionsSection" class="homepage-section"></div>
+
+  <div class="trust-strip">
+    <div class="trust-card">
+      <span class="trust-icon"><i data-lucide="shield-check"></i></span>
+      <div><h4>Trusted Community</h4><p>Verified members &amp; transparent ratings for safer sharing.</p></div>
+    </div>
+    <div class="trust-card">
+      <span class="trust-icon"><i data-lucide="zap"></i></span>
+      <div><h4>Easy &amp; Fast</h4><p>Post an item in under 60 seconds with instant requests.</p></div>
+    </div>
+    <div class="trust-card">
+      <span class="trust-icon"><i data-lucide="lock"></i></span>
+      <div><h4>Private &amp; Secure</h4><p>Your contact details stay safe until you accept an offer.</p></div>
+    </div>
+    <div class="trust-card">
+      <span class="trust-icon"><i data-lucide="leaf"></i></span>
+      <div><h4>100% Sustainable</h4><p>Reduce landfill waste and lower carbon footprint together.</p></div>
+    </div>
+  </div>
+</main>
+<footer>
+  <div class="footer-grid">
+    <div class="footer-brand">
+      <div class="logo"><span class="logo-mark"><i data-lucide="leaf"></i></span>ReUse Hub</div>
+      <p>India's hyperlocal resource network — request, share, reuse, rent, exchange and donate with people and businesses near you.</p>
+      <div class="footer-social">
+        <a href="#" aria-label="Instagram"><i data-lucide="instagram"></i></a>
+        <a href="#" aria-label="LinkedIn"><i data-lucide="linkedin"></i></a>
+        <a href="#" aria-label="Twitter"><i data-lucide="twitter"></i></a>
+      </div>
+    </div>
+    <div class="footer-col">
+      <h5>Community</h5>
+      <ul>
+        <li><a href="#" id="footerImpactLink">Our impact</a></li>
+        <li><a href="#">About</a></li>
+        <li><a href="#">Blog</a></li>
+      </ul>
+    </div>
+    <div class="footer-col">
+      <h5>For business</h5>
+      <ul>
+        <li><a href="#">Business Surplus</a></li>
+        <li><a href="#">Partner with us</a></li>
+      </ul>
+    </div>
+    <div class="footer-col">
+      <h5>Legal</h5>
+      <ul>
+        <li><a href="/terms.html">Terms &amp; privacy</a></li>
+      </ul>
+    </div>
+  </div>
+  <div class="footer-bottom">© 2026 ReUse Hub. Building a circular economy, one item at a time.</div>
+</footer>
+
+<div id="modalRoot"></div>
+<script src="/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,830 @@
+const state = {
+  user: null, categories: [], businessCategories: [], serviceCategories: [],
+  section: 'consumer', requestType: 'thing', urgentOnly: false,
+  items: [], requests: [], category: '', priceType: '', q: '', location: '',
+  wishlist: new Set(), monthlyBadges: null
+};
+
+const SECTION_HINTS = {
+  consumer: "Post things you don't want, or find something free/paid/exchange/rent nearby.",
+  business_waste: "For businesses with recurring byproducts — metal scrap, cow dung, used cooking oil, sawdust, and more. Other businesses or farms can request them.",
+  requests: "Post what you NEED instead of what you have — a thing or a service — and let nearby people fulfill it for free, rent, or payment."
+};
+
+const $ = sel => document.querySelector(sel);
+const modalRoot = $('#modalRoot');
+
+function closeModal() { modalRoot.innerHTML = ''; }
+
+function showModal(html) {
+  modalRoot.innerHTML = `<div class="modal-overlay" id="overlay"><div class="modal">
+    <button class="close" id="closeModal">&times;</button>${html}</div></div>`;
+  $('#closeModal').onclick = closeModal;
+  $('#overlay').onclick = (e) => { if (e.target.id === 'overlay') closeModal(); };
+}
+
+async function api(url, opts = {}) {
+  const res = await fetch(url, { credentials: 'include', ...opts });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || 'Request failed');
+  return data;
+}
+
+// ---------- init ----------
+async function init() {
+  const me = await api('/api/me');
+  state.user = me.user;
+  state.categories = me.categories;
+  state.businessCategories = me.business_categories;
+  state.serviceCategories = me.service_categories;
+  renderNav();
+  bindSectionTabs();
+  bindReqTypeTabs();
+  bindTopBar();
+  applySectionUi();
+  loadEcoPanel();
+  loadStatsStrip();
+  loadNearbyActivity();
+  bindNearbySection();
+  loadMonthlyBadges();
+  if (state.user) refreshNotifCount();
+  $('#impactStripBtn').onclick = () => openImpactModal();
+  $('#footerImpactLink').onclick = (e) => { e.preventDefault(); openImpactModal(); };
+  window.addEventListener('scroll', () => {
+    document.querySelector('header').classList.toggle('scrolled', window.scrollY > 8);
+  }, { passive: true });
+  animateSearchPlaceholder();
+  checkResetTokenInUrl();
+  if (window.lucide) lucide.createIcons();
+}
+
+const SEARCH_EXAMPLES = ['laptops', 'books', 'furniture', 'tools', 'a study table', 'kitchen appliances', 'school bags'];
+function animateSearchPlaceholder() {
+  const el = $('#search');
+  if (!el) return;
+  let i = 0;
+  setInterval(() => {
+    if (document.activeElement === el || el.value) return;
+    i = (i + 1) % SEARCH_EXAMPLES.length;
+    el.placeholder = `Search ${SEARCH_EXAMPLES[i]}...`;
+  }, 2600);
+}
+
+// Animate a number counting up from 0 to `target`, used for the impact/stats strip.
+function animateCount(el, target, duration = 900) {
+  const start = performance.now();
+  const from = 0;
+  function tick(now) {
+    const p = Math.min(1, (now - start) / duration);
+    const eased = 1 - Math.pow(1 - p, 3);
+    el.textContent = Math.round(from + (target - from) * eased).toLocaleString();
+    if (p < 1) requestAnimationFrame(tick);
+  }
+  requestAnimationFrame(tick);
+}
+
+async function loadStatsStrip() {
+  const el = $('#statsStrip');
+  if (!el) return;
+  try {
+    const stats = await api('/api/impact');
+    const items = [
+      { n: stats.reused_items || 0, label: 'Items reused' },
+      { n: stats.total_users || 0, label: 'Members' },
+      { n: stats.completed_requests || 0, label: 'Successful exchanges' },
+      { n: stats.active_today || 0, label: 'Active today' },
+      { n: stats.verified_users || 0, label: 'Verified members' }
+    ];
+    el.innerHTML = items.map((s, i) => `<div class="stat"><span class="num" id="statNum${i}">0</span><span class="label">${s.label}</span></div>`).join('');
+    items.forEach((s, i) => animateCount($('#statNum' + i), s.n));
+  } catch (e) { /* non-critical */ }
+}
+
+function bindSectionTabs() {
+  document.querySelectorAll('.section-tab').forEach(btn => btn.onclick = () => {
+    state.section = btn.dataset.section;
+    state.category = ''; state.priceType = ''; state.q = ''; state.urgentOnly = false;
+    $('#search').value = '';
+    $('#priceFilter').value = '';
+    $('#urgentOnly').checked = false;
+    document.querySelectorAll('.section-tab').forEach(b => b.classList.toggle('active', b === btn));
+    applySectionUi();
+  });
+}
+
+function bindReqTypeTabs() {
+  document.querySelectorAll('#reqTypeTabs .chip').forEach(btn => btn.onclick = () => {
+    state.requestType = btn.dataset.rt;
+    state.category = '';
+    document.querySelectorAll('#reqTypeTabs .chip').forEach(b => b.classList.toggle('active', b === btn));
+    renderCategories();
+    loadRequests();
+  });
+  $('#urgentOnly').onchange = e => { state.urgentOnly = e.target.checked; loadRequests(); };
+}
+
+function applySectionUi() {
+  const isRequests = state.section === 'requests';
+  $('#sectionHint').textContent = SECTION_HINTS[state.section];
+  $('#reqTypeTabs').style.display = isRequests ? 'flex' : 'none';
+  $('#priceFilter').style.display = isRequests ? 'none' : '';
+  $('#trendingSection').innerHTML = '';
+  $('#urgentSection').innerHTML = '';
+  $('#communitySection').innerHTML = '';
+  $('#businessTeaserSection').innerHTML = '';
+  $('#collectionsSection').innerHTML = '';
+  const postLabel = state.section === 'business_waste' ? 'Post a byproduct' : (isRequests ? 'Post a request' : 'Post item');
+  $('#postBtn').innerHTML = `<i data-lucide="plus"></i> ${postLabel}`;
+  if (window.lucide) lucide.createIcons();
+  renderCategories();
+  if (isRequests) { loadRequests(); } else { loadItems(); loadTrending(); }
+  loadBusinessTeaser();
+  if (state.section === 'consumer') {
+    // Homepage order: Urgent Requests -> Trending (tabs) -> Categories+Products+Impact -> Community Story -> Business teaser -> Popular Collections.
+    loadUrgentRequests();
+    loadCollections();
+    loadCommunityStory();
+  }
+  loadEcoPanel();
+}
+
+async function loadUrgentRequests() {
+  const el = $('#urgentSection');
+  const items = await api('/api/requests/urgent');
+  if (!items.length) { el.innerHTML = ''; return; }
+  const shown = items.slice(0, 3);
+  el.innerHTML = `<div class="highlight-wrap hl-urgent">
+    <h2>🤝 People asking for help ${items.length > 3 ? `<button class="view-all-link" id="urgentViewAll">View all (${items.length}) →</button>` : ''}</h2>
+    <p class="highlight-sub">People who need help right now — respond if you can.</p>
+    <div class="grid hscroll">${shown.map(requestCardHtml).join('')}</div>
+  </div>`;
+  el.querySelectorAll('.card').forEach(c => c.onclick = () => openRequestDetail(c.dataset.id));
+  if ($('#urgentViewAll')) $('#urgentViewAll').onclick = () => openUrgentAllModal(items);
+}
+
+function openUrgentAllModal(items) {
+  showModal(`<h2>🚨 All urgent requests</h2><div class="grid" style="margin-top:14px">${items.map(requestCardHtml).join('')}</div>`);
+  modalRoot.querySelectorAll('.card').forEach(c => c.onclick = () => { closeModal(); openRequestDetail(c.dataset.id); });
+}
+
+// Compact "Popular Collections" — replaces the old full-height Construction/Educational grids with small
+// 3-item previews + "View all" (which just applies the category filter), keeping the homepage short.
+async function loadCollections() {
+  const el = $('#collectionsSection');
+  if (!el) return;
+  if (state.section !== 'consumer') { el.innerHTML = ''; return; }
+  try {
+    const [highlightGroups, furniture, electronics] = await Promise.all([
+      api('/api/home-highlights'),
+      api('/api/items?listing_type=consumer&category=' + encodeURIComponent('Furniture')),
+      api('/api/items?listing_type=consumer&category=' + encodeURIComponent('Electronics & Phones'))
+    ]);
+    const groups = [
+      ...highlightGroups.map(g => ({ icon: g.icon, label: g.label, items: g.items })),
+      { icon: '🛋️', label: 'Furniture', items: furniture },
+      { icon: '📱', label: 'Electronics & Phones', items: electronics }
+    ];
+    const cards = groups.map(g => {
+      const groupItems = g.items.slice(0, 3);
+      if (!groupItems.length) return '';
+      return `<div class="collection-card">
+        <div class="collection-head"><h3>${g.icon} ${escapeHtml(g.label)}</h3><button class="view-all-link" data-cat="${escapeHtml(groupItems[0].category)}">View all →</button></div>
+        <div class="collection-mini-grid">${groupItems.map(i => `<div class="mini-thumb" data-id="${i.id}">${thumbInnerHtml(i)}</div>`).join('')}</div>
+      </div>`;
+    }).filter(Boolean).join('');
+    if (!cards) { el.innerHTML = ''; return; }
+    el.innerHTML = `<div class="section-head"><h2>🎁 Popular collections</h2></div><div class="collections-grid">${cards}</div>`;
+    el.querySelectorAll('.mini-thumb').forEach(t => t.onclick = () => openDetail(t.dataset.id));
+    el.querySelectorAll('[data-cat]').forEach(btn => btn.onclick = () => {
+      state.category = btn.dataset.cat;
+      renderCategories();
+      loadItems();
+      document.querySelector('#content').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  } catch (e) { /* non-critical */ }
+}
+
+// Community Story — grounded in a real claimed item rather than a fabricated testimonial; falls back
+// to an evergreen line when there's no claimed-item data yet (e.g. a brand-new deployment).
+async function loadCommunityStory() {
+  const el = $('#communitySection');
+  if (!el) return;
+  if (state.section !== 'consumer') { el.innerHTML = ''; return; }
+  try {
+    const items = await api('/api/items?listing_type=consumer');
+    const claimed = items.filter(i => i.status === 'claimed');
+    let quote, meta;
+    if (claimed.length) {
+      const pick = claimed[Math.floor(Date.now() / 86400000) % claimed.length];
+      quote = `"${pick.title}" found a new home.`;
+      meta = `Shared by ${pick.owner_name}${pick.owner_location ? ' in ' + pick.owner_location : ''}`;
+    } else {
+      quote = 'Every item posted here is one less thing in a landfill.';
+      meta = 'Be the first to share a success story — post an item today.';
+    }
+    el.innerHTML = `<div class="community-story">
+      <span class="quote-icon">❤️</span>
+      <div class="story-body">
+        <blockquote>${escapeHtml(quote)}</blockquote>
+        <div class="story-meta">${escapeHtml(meta)}</div>
+      </div>
+      <button class="story-link" id="storyImpactLink">See our impact →</button>
+    </div>`;
+    $('#storyImpactLink').onclick = () => openImpactModal();
+  } catch (e) { /* non-critical */ }
+}
+
+function loadBusinessTeaser() {
+  const el = $('#businessTeaserSection');
+  if (!el) return;
+  if (state.section === 'business_waste') { el.innerHTML = ''; return; }
+  el.innerHTML = `<div class="business-teaser">
+    <div>
+      <h2>🏭 Running a business with recurring byproducts?</h2>
+      <p>Metal scrap, cow dung, used cooking oil, sawdust and more — connect with nearby businesses and farms who can reuse it instead of it going to waste.</p>
+    </div>
+    <button class="btn-light" id="businessTeaserBtn">Explore business recycling</button>
+  </div>`;
+  $('#businessTeaserBtn').onclick = () => {
+    document.querySelector('.section-tab[data-section="business_waste"]').click();
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+}
+
+function activeCategoryList() {
+  if (state.section === 'business_waste') return state.businessCategories;
+  if (state.section === 'requests') return state.requestType === 'service' ? state.serviceCategories : state.categories;
+  return state.categories;
+}
+
+async function refreshNotifCount() {
+  if (!state.user) return;
+  const { count } = await api('/api/notifications/unread-count');
+  const dot = $('#notifDot');
+  if (dot) dot.textContent = count > 0 ? String(count) : '';
+  if (dot) dot.style.display = count > 0 ? '' : 'none';
+}
+
+const TREND_TABS = [
+  { key: 'hot', label: '🔥 Trending today' },
+  { key: 'new', label: '🆕 Recently added' },
+  { key: 'near', label: '📍 Near you' },
+  { key: 'free', label: '♻️ Free items' }
+];
+
+async function loadTrending() {
+  const el = $('#trendingSection');
+  if (state.section === 'requests') { el.innerHTML = ''; return; }
+  let hot = [];
+  try { hot = await api('/api/items-trending?listing_type=' + state.section); } catch (e) { /* non-critical */ }
+  if (!hot.length) {
+    el.innerHTML = `<div class="trending-wrap">
+      <div class="empty-state">
+        <div class="empty-state-icon">🌱</div>
+        <h3>Nothing has been posted yet</h3>
+        <p>Be the first person to give something a new home.</p>
+        <button class="primary-btn" id="trendingEmptyPostBtn">Post an item</button>
+      </div>
+    </div>`;
+    const btn = $('#trendingEmptyPostBtn');
+    if (btn) btn.onclick = () => $('#postBtn').click();
+    return;
+  }
+  el.innerHTML = `<div class="trending-wrap">
+    <div class="trend-tabs">${TREND_TABS.map((t, i) => `<button class="trend-tab${i === 0 ? ' active' : ''}" data-tab="${t.key}">${t.label}</button>`).join('')}</div>
+    <div class="grid" id="trendGrid"></div>
+  </div>`;
+  el.querySelectorAll('.trend-tab').forEach(btn => btn.onclick = () => {
+    el.querySelectorAll('.trend-tab').forEach(b => b.classList.toggle('active', b === btn));
+    loadTrendTab(btn.dataset.tab);
+  });
+  const grid = $('#trendGrid');
+  grid.innerHTML = hot.map(cardHtml).join('');
+  grid.querySelectorAll('.card').forEach(c => c.onclick = () => openDetail(c.dataset.id));
+  bindWishlistButtons(grid);
+}
+
+async function loadTrendTab(tab) {
+  const grid = $('#trendGrid');
+  if (!grid) return;
+  let items = [];
+  try {
+    if (tab === 'hot') {
+      items = await api('/api/items-trending?listing_type=' + state.section);
+    } else if (tab === 'new') {
+      items = (await api('/api/items?listing_type=' + state.section)).slice(0, 8);
+    } else if (tab === 'near') {
+      const loc = (state.user && state.user.location) || '';
+      const params = new URLSearchParams({ listing_type: state.section });
+      if (loc) params.set('location', loc);
+      items = (await api('/api/items?' + params.toString())).slice(0, 8);
+    } else if (tab === 'free') {
+      items = (await api('/api/items?listing_type=' + state.section + '&price_type=free')).slice(0, 8);
+    }
+  } catch (e) { /* non-critical */ }
+  if (!items.length) { grid.innerHTML = `<div class="empty">Nothing here yet.</div>`; return; }
+  grid.innerHTML = items.map(cardHtml).join('');
+  grid.querySelectorAll('.card').forEach(c => c.onclick = () => openDetail(c.dataset.id));
+  bindWishlistButtons(grid);
+}
+
+function bindTopBar() {
+  $('#postBtn').onclick = () => {
+    if (!state.user) return openAuthModal('login');
+    state.section === 'requests' ? openPostRequestModal() : openPostModal();
+  };
+  if ($('#heroPostBtn')) $('#heroPostBtn').onclick = () => $('#postBtn').click();
+  $('#search').oninput = debounce(e => {
+    state.q = e.target.value;
+    state.section === 'requests' ? loadRequests() : loadItems();
+  }, 350);
+  $('#locationFilter').oninput = debounce(e => {
+    state.location = e.target.value;
+    state.section === 'requests' ? loadRequests() : loadItems();
+    loadNearbyActivity();
+  }, 350);
+  $('#priceFilter').onchange = e => { state.priceType = e.target.value; loadItems(); };
+}
+
+function renderVerifyBanner() {
+  const el = $('#verifyBanner');
+  if (!el) return;
+  if (!state.user || state.user.is_verified) { el.innerHTML = ''; return; }
+  el.innerHTML = `<div class="verify-banner">
+    <span>✅ Verify your account to earn a Verified badge and build trust with other users.</span>
+    <button id="startVerifyBtn">Verify now</button>
+  </div>`;
+  $('#startVerifyBtn').onclick = () => openVerifyModal();
+}
+
+function debounce(fn, ms) { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; }
+
+function renderNav() {
+  const nav = $('#nav');
+  if (state.user) {
+    nav.innerHTML = `
+      <span style="font-size:13px">Hi, ${escapeHtml(state.user.name)} ${state.user.account_type === 'business' ? '🏢' : ''}</span>
+      <button class="notif-btn" id="notifBtn">🔔<span class="notif-dot" id="notifDot" style="display:none"></span></button>
+      <button id="myItemsBtn">My posts</button>
+      <button id="activityBtn">Activity</button>
+      <button class="ghost" id="logoutBtn">Log out</button>`;
+    $('#notifBtn').onclick = () => openNotifications();
+    $('#myItemsBtn').onclick = () => openMyPosts();
+    $('#activityBtn').onclick = () => openActivity();
+    $('#logoutBtn').onclick = async () => { await api('/api/logout', { method: 'POST' }); state.user = null; renderNav(); loadItems(); };
+    refreshNotifCount();
+  } else {
+    nav.innerHTML = `<button id="loginBtn">Log in</button><button id="signupBtn">Sign up</button>`;
+    $('#loginBtn').onclick = () => openAuthModal('login');
+    $('#signupBtn').onclick = () => openAuthModal('signup');
+  }
+  renderVerifyBanner();
+}
+
+// Monochrome (single-color, Lucide) icon set — replaces the earlier multicolor emoji set for a more premium look.
+const CATEGORY_ICONS = {
+  'Education & School Supplies': 'graduation-cap', 'Toys & Kids': 'puzzle', 'Baby Products': 'baby', 'Books & Media': 'book-open',
+  'Construction Materials': 'hard-hat', 'Electronics & Phones': 'smartphone', 'Computers & Laptops': 'laptop', 'Furniture': 'sofa',
+  'Vehicles': 'car', 'Clothing & Accessories': 'shirt', 'Kitchen & Appliances': 'utensils', 'Food (Surplus)': 'apple',
+  'Tools & Equipment': 'wrench', 'Event Items & Decorations': 'party-popper', 'Other': 'package',
+  // service categories
+  'Electrician': 'zap', 'Plumber': 'wrench', 'Tutor': 'graduation-cap', 'Delivery': 'truck', 'Cleaning': 'sparkles',
+  'Repairs': 'hammer', 'Design': 'pen-tool', 'Photography': 'camera', 'Pet Care': 'dog', 'Other Service': 'package',
+  // business categories
+  'Metal Scrap (CNC/Machining)': 'cog', 'Wood Scrap & Sawdust': 'axe', 'Cow Dung & Manure': 'leaf',
+  'Used Cooking Oil': 'droplet', 'Food & Organic Waste': 'apple', 'Fabric & Textile Scrap': 'shirt',
+  'Paper & Cardboard Waste': 'file-text', 'Plastic Scrap': 'recycle', 'Construction Debris': 'hard-hat',
+  'Other Industrial Byproduct': 'package'
+};
+
+function renderCategories() {
+  const wrap = $('#categories');
+  wrap.innerHTML = `<span class="chip ${state.category === '' ? 'active' : ''}" data-c=""><span class="cat-icon"><i data-lucide="layout-grid"></i></span>All</span>` +
+    activeCategoryList().map(c => `<span class="chip ${state.category === c ? 'active' : ''}" data-c="${escapeHtml(c)}"><span class="cat-icon"><i data-lucide="${CATEGORY_ICONS[c] || 'package'}"></i></span>${escapeHtml(c)}</span>`).join('');
+  wrap.querySelectorAll('.chip').forEach(el => el.onclick = () => {
+    state.category = el.dataset.c;
+    renderCategories();
+    state.section === 'requests' ? loadRequests() : loadItems();
+  });
+  if (window.lucide) lucide.createIcons();
+}
+
+async function loadEcoPanel() {
+  const el = $('#ecoStats');
+  if (el) {
+    try {
+      const stats = await api('/api/impact');
+      const rows = [
+        { n: stats.reused_items || 0, label: 'Items reused' },
+        { n: stats.total_users || 0, label: 'Active members' },
+        { n: stats.completed_requests || 0, label: 'Happy exchanges' }
+      ];
+      el.innerHTML = rows.map((s, i) => `<div class="eco-stat"><span class="num" id="ecoNum${i}">0</span><span class="label">${s.label}</span></div>`).join('');
+      rows.forEach((s, i) => animateCount($('#ecoNum' + i), s.n));
+
+      // Extra estimated-impact metrics — simple, clearly-labeled multipliers on real counts from /api/impact.
+      const extraEl = $('#ecoExtra');
+      if (extraEl) {
+        const reused = stats.reused_items || 0;
+        const extraRows = [
+          { n: Math.round(reused * 4.2), label: 'Est. CO₂ saved (kg)' },
+          { n: Math.round(reused / 15) || (reused > 0 ? 1 : 0), label: 'Est. trees saved' },
+          { n: stats.waste_diverted_listings || 0, label: 'Waste streams diverted' },
+          { n: stats.repeat_users || 0, label: 'Repeat community members' }
+        ];
+        extraEl.innerHTML = `<div class="eco-panel-section"><h4><i data-lucide="sparkles"></i> Estimated impact</h4>
+          ${extraRows.map((s, i) => `<div class="eco-mini-row"><span class="t">${s.label}</span><span class="v" id="ecoExtraNum${i}">0</span></div>`).join('')}
+        </div>`;
+        extraRows.forEach((s, i) => animateCount($('#ecoExtraNum' + i), s.n, 1100));
+        if (window.lucide) lucide.createIcons();
+      }
+    } catch (e) { /* impact panel is non-critical, fail quietly */ }
+  }
+
+  // Nearby requests mini-list — real open requests, filtered by the logged-in user's location when known.
+  const nearbyEl = $('#ecoNearby');
+  if (nearbyEl) {
+    try {
+      const loc = (state.user && state.user.location) || '';
+      const params = new URLSearchParams({ request_type: 'thing' });
+      if (loc) params.set('location', loc);
+      const open = (await api('/api/requests?' + params.toString())).slice(0, 3);
+      nearbyEl.innerHTML = `<div class="eco-panel-section"><h4><i data-lucide="map-pin"></i> Nearby requests</h4>
+        ${open.length ? open.map(r => `<div class="eco-mini-row" data-id="${r.id}"><span class="t">${escapeHtml(r.title)}</span><span class="v">${r.is_urgent ? '🚨' : '→'}</span></div>`).join('') : `<div class="eco-mini-empty">No open requests right now.</div>`}
+      </div>`;
+      nearbyEl.querySelectorAll('.eco-mini-row[data-id]').forEach(row => row.onclick = () => openRequestDetail(row.dataset.id));
+      if (window.lucide) lucide.createIcons();
+    } catch (e) { /* non-critical */ }
+  }
+}
+
+// ---------- Nearby Activity (homepage) ----------
+function timeAgo(dateStr) {
+  const diffMs = Date.now() - new Date(dateStr).getTime();
+  const min = Math.floor(diffMs / 60000);
+  if (min < 1) return 'just now';
+  if (min < 60) return min + ' min ago';
+  const hr = Math.floor(min / 60);
+  if (hr < 24) return hr + (hr === 1 ? ' hour ago' : ' hours ago');
+  const day = Math.floor(hr / 24);
+  return day + (day === 1 ? ' day ago' : ' days ago');
+}
+
+const NEARBY_ICONS = { consumer: '🪑', business_waste: '📦', thing: '🪑', service: '🤝' };
+
+async function loadNearbyActivity() {
+  const countsEl = $('#nearbyCounts');
+  const recentEl = $('#nearbyRecent');
+  if (!countsEl || !recentEl) return;
+  try {
+    const loc = state.location || '';
+    const q = loc ? '&location=' + encodeURIComponent(loc) : '';
+    const [consumerItems, bizItems, thingReqs, serviceReqs] = await Promise.all([
+      api('/api/items?listing_type=consumer' + q),
+      api('/api/items?listing_type=business_waste' + q),
+      api('/api/requests?request_type=thing' + q),
+      api('/api/requests?request_type=service' + q)
+    ]);
+    const allItems = [...consumerItems, ...bizItems];
+    const allRequests = [...thingReqs, ...serviceReqs];
+
+    countsEl.innerHTML = `
+      <div class="nearby-count"><strong>${allItems.length}</strong> item${allItems.length === 1 ? '' : 's'} nearby</div>
+      <div class="nearby-count"><strong>${allRequests.length}</strong> request${allRequests.length === 1 ? '' : 's'} nearby</div>
+    `;
+
+    const feed = [
+      ...allItems.map(i => ({ type: 'item', icon: NEARBY_ICONS[i.listing_type] || '🪑', title: i.title, loc: i.owner_location, at: i.created_at, id: i.id })),
+      ...allRequests.map(r => ({ type: 'request', icon: NEARBY_ICONS[r.request_type] || '🙋', title: r.title, loc: r.owner_location, at: r.created_at, id: r.id }))
+    ].sort((a, b) => new Date(b.at) - new Date(a.at)).slice(0, 3);
+
+    if (!feed.length) {
+      recentEl.innerHTML = `<div class="nearby-empty">Nothing new nearby yet. Be the first to post.</div>`;
+    } else {
+      recentEl.innerHTML = feed.map(f => `
+        <div class="nearby-row" data-type="${f.type}" data-id="${f.id}">
+          <span class="nearby-row-icon">${f.icon}</span>
+          <span class="nearby-row-text">
+            <span class="nearby-row-title">${escapeHtml(f.title)}</span>
+            <span class="nearby-row-meta">${escapeHtml(f.loc || 'Nearby')} · ${timeAgo(f.at)}</span>
+          </span>
+        </div>
+      `).join('');
+      recentEl.querySelectorAll('.nearby-row').forEach(row => {
+        row.onclick = () => row.dataset.type === 'item' ? openDetail(row.dataset.id) : openRequestDetail(row.dataset.id);
+      });
+    }
+  } catch (e) { /* non-critical */ }
+}
+
+function bindNearbySection() {
+  const btn = $('#nearbyCtaBtn');
+  if (!btn) return;
+  btn.onclick = () => {
+    const locInput = $('#locationFilter');
+    if (locInput && locInput.value.trim()) {
+      $('#content')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    } else {
+      document.querySelector('.hero-banner')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      setTimeout(() => locInput && locInput.focus(), 400);
+    }
+  };
+}
+
+// ---------- monthly contribution badges (Community Champions) ----------
+// No points/XP/levels — just real completed-exchange counts, fetched live every load so it
+// naturally changes when the month changes rather than being permanently awarded.
+async function loadMonthlyBadges() {
+  const el = $('#championsSection');
+  if (!el) return;
+  try {
+    const badges = await api('/api/badges/monthly');
+    state.monthlyBadges = badges;
+    el.innerHTML = championsSectionHtml(badges);
+    const btn = $('#viewAllContributorsBtn');
+    if (btn) btn.onclick = () => openContributorsModal();
+  } catch (e) { /* non-critical */ }
+}
+
+const CHAMPION_KINDS = [
+  { key: 'food_giver', rank: '🥇', theme: 'gold', icon: '🍲', title: 'Top Food Giver', emptyMsg: 'Be the first to rescue surplus food this month.' },
+  { key: 'reuse_donor', rank: '🥈', theme: 'silver', icon: '♻️', title: 'Top Reuse Donor', emptyMsg: 'Be the first to give an item a second life this month.' },
+  { key: 'community_champion', rank: '🥉', theme: 'bronze', icon: '🌱', title: 'Community Champion', emptyMsg: 'Start making an impact today and inspire others.' }
+];
+
+function championBoxHtml(kind, entry) {
+  return `<div class="champion-box theme-${kind.theme}">
+    <div class="champion-rank">${kind.rank}</div>
+    <div class="champion-icon-wrap"><span class="champion-icon">${kind.icon}</span></div>
+    <div class="champion-title">${kind.title}</div>
+    <div class="champion-name">${entry ? escapeHtml(entry.name) + (entry.account_type === 'business' ? ' <span class="owner-badge">Business</span>' : '') : 'No champion yet'}</div>
+    <div class="champion-sub">${entry ? `${entry.count} completed this month` : kind.emptyMsg}</div>
+    <div class="champion-footer">${entry ? entry.count : 0} confirmed donation${entry && entry.count === 1 ? '' : 's'}</div>
+  </div>`;
+}
+
+function championsSectionHtml(badges) {
+  return `
+    <div class="champions-top">
+      <div>
+        <div class="champions-head">🏆 Monthly Community Champions</div>
+        <div class="champions-sub">Recognizing the people making the biggest impact this month.</div>
+      </div>
+      <div class="champions-month">📅 ${escapeHtml(badges.month)}</div>
+    </div>
+    <div class="champions-grid">
+      ${CHAMPION_KINDS.map(k => championBoxHtml(k, badges[k.key])).join('')}
+    </div>
+    <div class="champions-view-all-wrap">
+      <button type="button" class="champions-view-all" id="viewAllContributorsBtn">View all contributors →</button>
+    </div>`;
+}
+
+async function openContributorsModal() {
+  showModal(`<h2>🏆 Contributors this month</h2><div id="contributorsList">Loading...</div>`);
+  try {
+    const badges = await api('/api/badges/monthly');
+    const list = badges.leaderboard || [];
+    $('#contributorsList').innerHTML = list.length
+      ? `<div class="contributors-list">${list.map((c, i) => `
+          <div class="contributor-row">
+            <span class="contributor-rank">#${i + 1}</span>
+            <span class="contributor-name">${escapeHtml(c.name)}${c.account_type === 'business' ? ' <span class="owner-badge">Business</span>' : ''}</span>
+            <span class="contributor-count">${c.count} completed</span>
+          </div>`).join('')}</div>`
+      : `<div class="empty">Be the first community champion this month.</div>`;
+  } catch (e) { $('#contributorsList').innerHTML = `<div class="empty">Couldn't load contributors right now.</div>`; }
+}
+
+async function loadItems() {
+  const params = new URLSearchParams();
+  params.set('listing_type', state.section);
+  if (state.category) params.set('category', state.category);
+  if (state.priceType) params.set('price_type', state.priceType);
+  if (state.q) params.set('q', state.q);
+  if (state.location) params.set('location', state.location);
+  const items = await api('/api/items?' + params.toString());
+  state.items = items;
+  renderGrid();
+}
+
+async function loadRequests() {
+  const params = new URLSearchParams();
+  params.set('request_type', state.requestType);
+  if (state.category) params.set('category', state.category);
+  if (state.q) params.set('q', state.q);
+  if (state.urgentOnly) params.set('urgent', '1');
+  if (state.location) params.set('location', state.location);
+  const requests = await api('/api/requests?' + params.toString());
+  state.requests = requests;
+  renderGrid();
+}
+
+const CONTENT_TITLES = {
+  consumer: '🌱 Give items a new home',
+  business_waste: '🏪 Business recycling',
+  requests: '🙋 Community requests'
+};
+
+function renderGrid() {
+  const el = $('#content');
+  const title = `<h2 class="content-title">${CONTENT_TITLES[state.section] || ''}</h2>`;
+  if (state.section === 'requests') {
+    if (!state.requests.length) {
+      el.innerHTML = title + `<div class="empty-state">
+        <div class="empty-state-icon">🙋</div>
+        <h3>No requests yet</h3>
+        <p>Ask your neighbors for something you need, or offer to help with one nearby.</p>
+        <button class="primary-btn" id="gridEmptyPostBtn">Post a request</button>
+      </div>`;
+      const btn = $('#gridEmptyPostBtn'); if (btn) btn.onclick = () => $('#postBtn').click();
+      return;
+    }
+    el.innerHTML = title + `<div class="grid">${state.requests.map(requestCardHtml).join('')}</div>`;
+    el.querySelectorAll('.card').forEach(c => c.onclick = () => openRequestDetail(c.dataset.id));
+    return;
+  }
+  if (!state.items.length) {
+    el.innerHTML = title + `<div class="empty-state">
+      <div class="empty-state-icon">🌱</div>
+      <h3>Nothing has been posted yet</h3>
+      <p>Be the first person to give something a new home.</p>
+      <button class="primary-btn" id="gridEmptyPostBtn">Post an item</button>
+    </div>`;
+    const btn = $('#gridEmptyPostBtn'); if (btn) btn.onclick = () => $('#postBtn').click();
+    return;
+  }
+  el.innerHTML = title + `<div class="grid">${state.items.map(cardHtml).join('')}</div>`;
+  el.querySelectorAll('.card').forEach(c => c.onclick = () => openDetail(c.dataset.id));
+  bindWishlistButtons(el);
+}
+
+function requestBadgeHtml(r) {
+  let label;
+  if (r.budget_type === 'paid') label = 'Will pay ₹' + r.budget_amount;
+  else if (r.budget_type === 'exchange') label = 'Will exchange';
+  else label = 'FREE HELP OK';
+  let b = `<span class="badge ${r.budget_type}">${label}</span> <span class="badge ${r.request_type}">${r.request_type === 'service' ? 'Service' : 'Thing'}</span>`;
+  if (r.is_urgent) b += ` <span class="badge urgent">Urgent</span>`;
+  if (r.status === 'fulfilled') b += ` <span class="badge claimed">fulfilled</span>`;
+  return b;
+}
+
+function requestPriceLabel(r) {
+  if (r.is_urgent) return r.budget_type === 'paid' ? `Urgent · ₹${r.budget_amount}` : 'Urgent';
+  if (r.budget_type === 'paid') return '₹' + r.budget_amount;
+  if (r.budget_type === 'exchange') return 'Exchange';
+  return 'Free help ok';
+}
+
+const LOC_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>`;
+const PACKAGE_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8l-9-5-9 5 9 5 9-5z"/><path d="M3 8v8l9 5 9-5V8"/><path d="M12 13v8"/></svg>`;
+const HEART_SVG = `<svg viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.6l-1-1a5.5 5.5 0 0 0-7.8 7.8l1 1L12 21l7.8-7.6 1-1a5.5 5.5 0 0 0 0-7.8Z"/></svg>`;
+const CHECK_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`;
+function ownerNameHtml(name, verified, ownerId) {
+  return `<span class="owner-name">${escapeHtml(name)}${verified ? `<span class="owner-check" title="Verified">${CHECK_SVG}</span>` : ''}${miniBadgeHtml(ownerId)}</span>`;
+}
+
+// Small badge shown beside a name when that user currently holds a monthly contribution badge —
+// real data only, and it naturally changes/disappears when the month changes since it's always
+// re-fetched from the live /api/badges/monthly calculation.
+function miniBadgeHtml(ownerId) {
+  if (!ownerId || !state.monthlyBadges) return '';
+  const b = state.monthlyBadges;
+  if (b.food_giver && b.food_giver.user_id === ownerId) return ` <span class="mini-badge" title="Top Food Giver · ${escapeHtml(b.month)}">🍲</span>`;
+  if (b.reuse_donor && b.reuse_donor.user_id === ownerId) return ` <span class="mini-badge" title="Top Reuse Donor · ${escapeHtml(b.month)}">♻️</span>`;
+  if (b.community_champion && b.community_champion.user_id === ownerId) return ` <span class="mini-badge" title="Community Champion · ${escapeHtml(b.month)}">🌱</span>`;
+  return '';
+}
+
+function requestCardHtml(r) {
+  const icon = r.request_type === 'service' ? '🛠️' : '🔎';
+  const badgeCls = r.is_urgent ? 'price-badge urgent' : 'price-badge';
+  const label = r.status === 'fulfilled' ? 'Fulfilled' : requestPriceLabel(r);
+  return `<div class="card" data-id="${r.id}">
+    <div class="thumb">
+      <span class="thumb-emoji">${icon}</span>
+      <span class="${badgeCls}">${label}</span>
+    </div>
+    <div class="body">
+      <h3>${escapeHtml(r.title)}</h3>
+      <div class="meta">${ownerNameHtml(r.owner_name, r.owner_verified, r.user_id)} • ${escapeHtml(r.category)}</div>
+      <div class="footer-bar">
+        <span class="loc">${LOC_SVG}${escapeHtml(r.owner_location || 'Nearby')}</span>
+        <span class="go-btn">${r.request_type === 'service' ? 'Offer help' : 'Respond'} →</span>
+      </div>
+    </div>
+  </div>`;
+}
+
+function badgeHtml(item) {
+  let label;
+  if (item.price_type === 'paid') label = '₹' + item.price;
+  else if (item.price_type === 'rent') label = `₹${item.rent_rate}/${item.rent_period || 'day'}`;
+  else label = item.price_type.toUpperCase();
+  let b = `<span class="badge ${item.price_type}">${label}</span>`;
+  if (item.is_recurring) b += ` <span class="badge recurring">${item.frequency || 'recurring'}</span>`;
+  if (item.status === 'claimed') b += ` <span class="badge claimed">claimed</span>`;
+  if (item.pickup_available) b += ` <span class="pickup-badge">🚚 Pickup available</span>`;
+  return b;
+}
+
+function thumbInnerHtml(item) {
+  const first = (item.media && item.media[0]) || (item.media_url ? { url: item.media_url, media_type: item.media_type } : null);
+  if (!first) return `<span class="thumb-emoji">📦</span>`;
+  if (first.media_type === 'video') return `<video src="${first.url}" muted></video>`;
+  return `<img src="${first.url}" loading="lazy">`;
+}
+
+function itemPriceLabel(item) {
+  if (item.status === 'claimed') return 'Claimed';
+  if (item.price_type === 'paid') return '₹' + item.price;
+  if (item.price_type === 'rent') return `₹${item.rent_rate}/${item.rent_period || 'day'}`;
+  if (item.price_type === 'exchange') return 'Exchange';
+  return 'Free';
+}
+
+function pickupFlagHtml(item) {
+  if (!item.pickup_available) return '';
+  return `<span class="pickup-flag">${PACKAGE_SVG}Pickup</span>`;
+}
+
+function galleryHtml(item) {
+  const media = (item.media && item.media.length) ? item.media : (item.media_url ? [{ url: item.media_url, media_type: item.media_type }] : []);
+  if (!media.length) return '';
+  return `<div class="gallery">${media.map(m => m.media_type === 'video'
+    ? `<video src="${m.url}" controls></video>`
+    : `<img src="${m.url}">`).join('')}</div>`;
+}
+
+function cardHtml(item) {
+  const liked = state.wishlist.has(item.id);
+  return `<div class="card" data-id="${item.id}">
+    <div class="thumb">
+      ${thumbInnerHtml(item)}
+      <span class="price-badge">${itemPriceLabel(item)}</span>
+      <button type="button" class="wishlist-btn${liked ? ' active' : ''}" data-wish="${item.id}" aria-label="Save to wishlist">${HEART_SVG}</button>
+    </div>
+    <div class="body">
+      <h3>${escapeHtml(item.title)}</h3>
+      <div class="meta">${ownerNameHtml(item.owner_name, item.owner_verified, item.user_id)} • ${escapeHtml(item.category)}</div>
+      <div class="footer-bar">
+        <span class="loc">${LOC_SVG}${escapeHtml(item.owner_location || 'Nearby')}</span>
+        ${pickupFlagHtml(item)}
+        <span class="go-btn">View →</span>
+      </div>
+    </div>
+  </div>`;
+}
+
+function bindWishlistButtons(container) {
+  container.querySelectorAll('.wishlist-btn').forEach(btn => {
+    btn.onclick = (e) => {
+      e.stopPropagation();
+      const id = Number(btn.dataset.wish);
+      if (state.wishlist.has(id)) state.wishlist.delete(id); else state.wishlist.add(id);
+      btn.classList.toggle('active');
+    };
+  });
+}
+
+function escapeHtml(s) { return (s || '').replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
+
+// ---------- auth helpers (shared by login/signup/forgot/reset) ----------
+
+// A network failure (offline, DNS, server unreachable) throws a TypeError from fetch itself,
+// before api() ever gets a response to read `.error` from — worth a distinct message from "the
+// server rejected your request" so users aren't told to check their password when it's actually
+// their wifi.
+function authErrorMessage(err) {
+  if (err instanceof TypeError) return "Can't reach the server. Check your connection and try again.";
+  return err.message || 'Something went wrong. Please try again.';
+}
+
+// Wires a 👁 show/hide toggle onto a password <input>. Icon and aria-label swap with state.
+function wirePasswordToggle(toggleBtn) {
+  const input = document.getElementById(toggleBtn.dataset.target);
+  toggleBtn.onclick = () => {
+    const showing = input.type === 'text';
+    input.type = showing ? 'password' : 'text';
+    toggleBtn.setAttribute('aria-label', showing ? 'Show password' : 'Hide password');
+    toggleBtn.innerHTML = `<i data-lucide="${showing ? 'eye' : 'eye-off'}"></i>`;
+    if (window.lucide) lucide.createIcons();
+    input.focus();
+  };
+}
+
+function pwToggleHtml(targetId) {
+  return `<button type="button" class="pw-toggle" data-target="${targetId}" aria-label="Show password"><i data-lucide="eye"></i></button>`;
+}
+
+// Simple, non-punishing strength heuristic — length plus a bit of character variety, not a
+// checklist of mandatory symbol/number/uppercase rules that just makes people forget passwords.
+function passwordStrength(pw) {
+  if (!pw) return { score: 0, label: '' };
+  let score = 0;
+  if (pw.length >= 8) score++;
+  if (pw.length >= 12) score++;
+  if (/[a-z]/.test(pw) && /[A-Z]/.test(pw)) score++;
+  if (/[0-9]/.test(pw) || /[^A-Za-z0-9]/.test(pw)) score++;
+  const levels = [

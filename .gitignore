@@ -1,0 +1,31 @@
+# Dependencies (reinstalled via `npm install`, not tracked)
+node_modules/
+
+# Real production database — never commit real user data
+data.sqlite
+data.sqlite-shm
+data.sqlite-wal
+
+# Demo database (regenerated via `npm run demo:seed`)
+demo/demo.sqlite
+demo/demo.sqlite-shm
+demo/demo.sqlite-wal
+demo/uploads/
+
+# User-uploaded photos — real user content, not source code
+public/uploads/
+
+# Secrets — API keys (Sightengine, ADMIN_EMAILS, etc.) must never be committed
+.env
+.env.*
+
+# Local backups — large, timestamped, not meant to live in version history
+backups/
+
+# Editor/OS clutter
+.DS_Store
+Thumbs.db
+*.log
+
+# Cloudflare tunnel binary if you keep it in the project folder
+cloudflared.exe
