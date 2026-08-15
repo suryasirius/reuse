@@ -56,6 +56,7 @@ async function init() {
   bindReqTypeTabs();
   bindTopBar();
   bindBottomNav();
+  bindMoreMenu();
   applySectionUi();
   loadEcoPanel();
   loadStatsStrip();
@@ -653,6 +654,31 @@ function bindBottomNav() {
     if (tab) tab.click();
     openPostModal();
   };
+}
+
+// ---------- desktop More/Community menu (nav redesign Stage 4) ----------
+// Every item here jumps to a section that already exists on the page, or opens an existing
+// modal (openImpactModal) — no new pages/content, no duplicated markup. Hidden on mobile via CSS.
+function bindMoreMenu() {
+  const wrap = $('#moreMenuWrap');
+  if (!wrap) return;
+  const dropdown = $('#moreMenuDropdown');
+  const scrollTo = (sel) => { const el = document.querySelector(sel); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' }); };
+  const MORE_ACTIONS = {
+    categories: () => scrollTo('.page-layout'),
+    nearby: () => scrollTo('#nearbySection'),
+    filters: () => { scrollTo('.hero-banner'); const panel = $('#filtersPanel'); if (panel) panel.style.display = 'flex'; },
+    champions: () => scrollTo('#championsSection'),
+    impact: () => openImpactModal(),
+    community: () => scrollTo('#communitySection'),
+    trust: () => scrollTo('.trust-strip'),
+    about: () => scrollTo('footer')
+  };
+  $('#moreMenuBtn').onclick = (e) => { e.stopPropagation(); dropdown.classList.toggle('open'); };
+  document.addEventListener('click', (e) => { if (!e.target.closest('#moreMenuWrap')) dropdown.classList.remove('open'); });
+  dropdown.querySelectorAll('[data-more]').forEach(btn => {
+    btn.onclick = () => { const fn = MORE_ACTIONS[btn.dataset.more]; if (fn) fn(); dropdown.classList.remove('open'); };
+  });
 }
 
 function renderVerifyBanner() {

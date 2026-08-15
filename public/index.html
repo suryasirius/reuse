@@ -22,6 +22,22 @@
       <button class="section-tab" data-section="requests">Requests</button>
     </div>
     <div class="capsule-actions">
+      <!-- Desktop-only More/Community menu (nav redesign Stage 4) — quick-jump links into
+           sections that already exist on this same page, plus the existing Impact modal. No new
+           pages/content, hidden on mobile (bottom nav + Profile sheet covers that there). -->
+      <div class="more-menu-wrap" id="moreMenuWrap">
+        <button type="button" class="ghost more-menu-btn" id="moreMenuBtn">More <i data-lucide="chevron-down"></i></button>
+        <div class="more-menu-dropdown" id="moreMenuDropdown">
+          <button type="button" data-more="categories"><i data-lucide="layout-grid"></i> Categories</button>
+          <button type="button" data-more="nearby"><i data-lucide="map-pin"></i> Nearby</button>
+          <button type="button" data-more="filters"><i data-lucide="sliders-horizontal"></i> Filters</button>
+          <button type="button" data-more="champions"><i data-lucide="trophy"></i> Monthly Champions</button>
+          <button type="button" data-more="impact"><i data-lucide="bar-chart-3"></i> Impact Tracker</button>
+          <button type="button" data-more="community"><i data-lucide="users"></i> Community Stats</button>
+          <button type="button" data-more="trust"><i data-lucide="shield-check"></i> Trust &amp; Safety</button>
+          <button type="button" data-more="about"><i data-lucide="info"></i> About ReUse Hub</button>
+        </div>
+      </div>
       <button class="primary-btn" id="postBtn"><i data-lucide="plus"></i> Post item</button>
       <nav id="nav"></nav>
     </div>

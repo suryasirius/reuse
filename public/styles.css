@@ -96,6 +96,24 @@ header nav .ghost:hover{background:var(--brand-softer);color:var(--brand-dark)}
 header nav span{color:var(--text);font-weight:600}
 #postBtn.primary-btn{margin-top:0}
 
+/* ---- Desktop More/Community menu (nav redesign Stage 4) ---- */
+.more-menu-wrap{position:relative}
+.more-menu-btn{display:flex;align-items:center;gap:4px}
+.more-menu-btn [data-lucide]{width:14px;height:14px}
+.more-menu-dropdown{
+  display:none;position:absolute;top:calc(100% + 8px);right:0;min-width:220px;z-index:40;
+  background:#fff;border:1px solid var(--border-soft);border-radius:16px;box-shadow:var(--shadow-lg);
+  padding:8px;flex-direction:column;gap:2px;
+}
+.more-menu-dropdown.open{display:flex}
+.more-menu-dropdown button{
+  display:flex;align-items:center;gap:10px;text-align:left;background:none;border:none;
+  padding:9px 10px;border-radius:10px;font-size:13px;font-weight:600;color:var(--text);cursor:pointer;
+  height:auto;width:100%;
+}
+.more-menu-dropdown button:hover{background:var(--brand-softer);color:var(--brand-dark);transform:none;box-shadow:none}
+.more-menu-dropdown button [data-lucide]{width:15px;height:15px;color:var(--muted);flex-shrink:0}
+
 .logo-wrap{display:flex;flex-direction:column;line-height:1.25}
 
 .diff-strip{
@@ -1203,6 +1221,7 @@ html,body{overflow-x:hidden;max-width:100%}
   .nav-capsule .section-tabs{display:none}
   #postBtn{display:none}
   #heroPostBtn{display:none}
+  #moreMenuWrap{display:none}
   #bottomNav{display:flex}
   body{padding-bottom:calc(60px + env(safe-area-inset-bottom))}
 
