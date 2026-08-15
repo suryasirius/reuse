@@ -587,10 +587,13 @@ function renderNav() {
 
 // Monochrome (single-color, Lucide) icon set — replaces the earlier multicolor emoji set for a more premium look.
 const CATEGORY_ICONS = {
-  'Education & School Supplies': 'graduation-cap', 'Toys & Kids': 'puzzle', 'Baby Products': 'baby', 'Books & Media': 'book-open',
+  'Education & School Supplies': 'graduation-cap', 'Baby & Kids': 'baby', 'Books & Media': 'book-open',
   'Construction Materials': 'hard-hat', 'Electronics & Phones': 'smartphone', 'Computers & Laptops': 'laptop', 'Furniture': 'sofa',
   'Vehicles': 'car', 'Clothing & Accessories': 'shirt', 'Kitchen & Appliances': 'utensils', 'Food (Surplus)': 'apple',
   'Tools & Equipment': 'wrench', 'Event Items & Decorations': 'party-popper', 'Other': 'package',
+  // legacy category names (pre category-cleanup) — kept only so any raw/unmapped display of an
+  // old stored value still resolves an icon instead of falling back to the generic package icon.
+  'Toys & Kids': 'baby', 'Baby Products': 'baby',
   // service categories
   'Electrician': 'zap', 'Plumber': 'wrench', 'Tutor': 'graduation-cap', 'Delivery': 'truck', 'Cleaning': 'sparkles',
   'Repairs': 'hammer', 'Design': 'pen-tool', 'Photography': 'camera', 'Pet Care': 'dog', 'Other Service': 'package',
@@ -600,6 +603,13 @@ const CATEGORY_ICONS = {
   'Paper & Cardboard Waste': 'file-text', 'Plastic Scrap': 'recycle', 'Construction Debris': 'hard-hat',
   'Other Industrial Byproduct': 'package'
 };
+
+// Category-merge compatibility (mirrors server.js LEGACY_CATEGORY_MERGE): items/requests posted
+// before the category cleanup may still carry the old 'Baby Products'/'Toys & Kids' values in the
+// database (never rewritten). Wherever a stored category is shown as text to the user, or matched
+// against the current canonical dropdown options, run it through this map first.
+const LEGACY_CATEGORY_LABELS = { 'Baby Products': 'Baby & Kids', 'Toys & Kids': 'Baby & Kids' };
+function displayCategory(cat) { return LEGACY_CATEGORY_LABELS[cat] || cat; }
 
 function renderCategories() {
   const wrap = $('#categories');
@@ -921,7 +931,7 @@ function requestCardHtml(r) {
     </div>
     <div class="body">
       <h3>${escapeHtml(r.title)}</h3>
-      <div class="meta">${ownerNameHtml(r.owner_name, r.owner_verified, r.user_id)} • ${escapeHtml(r.category)}</div>
+      <div class="meta">${ownerNameHtml(r.owner_name, r.owner_verified, r.user_id)} • ${escapeHtml(displayCategory(r.category))}</div>
       <div class="footer-bar">
         <span class="loc">${LOC_SVG}${escapeHtml(r.owner_location || 'Nearby')}</span>
         <span class="go-btn">${r.request_type === 'service' ? 'Offer help' : 'Respond'} →</span>
@@ -1002,7 +1012,7 @@ function cardHtml(item) {
     </div>
     <div class="body">
       <h3>${escapeHtml(item.title)}</h3>
-      <div class="meta">${ownerNameHtml(item.owner_name, item.owner_verified, item.user_id)} • ${escapeHtml(item.category)}</div>
+      <div class="meta">${ownerNameHtml(item.owner_name, item.owner_verified, item.user_id)} • ${escapeHtml(displayCategory(item.category))}</div>
       ${item.available_until ? `<div class="food-until-hint">🕐 Available until ${escapeHtml(formatAvailableUntil(item.available_until))}</div>` : ''}
       <div class="footer-bar">
         <span class="loc">${LOC_SVG}${escapeHtml(item.owner_location || 'Nearby')}</span>
@@ -1336,37 +1346,138 @@ function openPostModal() {
   const isBusiness = state.section === 'business_waste';
   showModal(`
     <h2>${isBusiness ? 'Post business surplus' : 'Post an item'}</h2>
-    <form id="postForm">
-      <label>Title</label><input name="title" required placeholder="${isBusiness ? 'e.g. 20 office chairs, CNC metal scrap' : 'e.g. Old iPhone 8, working condition'}">
-      <label>Description</label><textarea name="description" required placeholder="Describe condition, pickup details, etc."></textarea>
-      <label>Category</label>
-      <select name="category" id="postCategory" required>${activeCategoryList().map(c => `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`).join('')}</select>
-      <div id="foodExtra"></div>
-      <div id="bizSurplusExtra"></div>
-      <div class="row2">
-        <div><label>Condition</label>
-          <select name="condition"><option value="new">New</option><option value="like_new">Like new</option><option value="used" selected>Used</option><option value="needs_repair">Needs repair</option></select>
+    <p class="modal-subtitle">Share items you no longer need. Help someone. Help the planet. 🌱</p>
+    <form id="postForm" class="post-item-form">
+
+      <div class="form-section">
+        <div class="form-section-head"><span class="form-section-num">1</span>Basic Details</div>
+
+        <label>Title <span class="req">*</span></label>
+        <input name="title" required maxlength="120" id="postTitle" placeholder="${isBusiness ? 'e.g. 20 office chairs, CNC metal scrap' : 'e.g. Old iPhone 8, working condition'}">
+
+        <label>Photos <span class="hint-inline">Optional · Up to 5 photos</span></label>
+        <div class="photo-dropzone" id="photoDropzone" tabindex="0" role="button" aria-label="Upload photos">
+          <span class="photo-dropzone-icon">📷</span>
+          <span class="photo-dropzone-text"><strong>Upload photos</strong><br>or drag and drop</span>
+          <input type="file" name="media" id="mediaInput" accept="image/*,video/*" multiple class="photo-input-hidden">
         </div>
-        <div><label>Quantity</label><input name="quantity" placeholder="e.g. 50 kg, 200 L"></div>
+        <div class="photo-thumbs" id="photoThumbs"></div>
+        <p class="hint">Good photos = more chances to find the right person.</p>
+
+        <label>Description <span class="req">*</span></label>
+        <textarea name="description" required maxlength="1500" placeholder="Describe condition, pickup details, reason for giving, etc."></textarea>
       </div>
-      <label>Offer type</label>
-      <select name="price_type" id="priceType">
-        <option value="free">Free — give it away</option>
-        <option value="paid">Paid — sell for a price</option>
-        <option value="exchange">Exchange — swap for something</option>
-        <option value="rent">Rent — let others borrow it for a rate</option>
-      </select>
-      <div id="priceExtra"></div>
-      <label>Photos or videos (optional, up to 5)</label>
-      <input type="file" name="media" accept="image/*,video/*" multiple>
-      <label><input type="checkbox" name="pickup_available" id="pickupAvailable" checked style="width:auto;display:inline-block;margin-right:6px">Pickup is available for this listing</label>
-      <label><input type="checkbox" name="is_recurring" id="isRecurring" style="width:auto;display:inline-block;margin-right:6px">${isBusiness ? 'This is a recurring byproduct (e.g. weekly scrap, daily used oil)' : 'This is a recurring surplus (e.g. daily leftover food from my restaurant)'}</label>
-      <div id="freqExtra"></div>
-      ${pickupFieldsHtml()}
+
+      <div class="form-section">
+        <div class="form-section-head"><span class="form-section-num">2</span>Item Details</div>
+
+        <label>Category <span class="req">*</span></label>
+        <select name="category" id="postCategory" required>${activeCategoryList().map(c => `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`).join('')}</select>
+
+        <div class="row2">
+          <div><label>Condition <span class="req">*</span></label>
+            <select name="condition"><option value="new">New</option><option value="like_new">Like new</option><option value="used" selected>Used</option><option value="needs_repair">Needs repair</option></select>
+          </div>
+          <div><label>Quantity</label><input name="quantity" placeholder="e.g. 50 kg, 200 L, 2 pieces"></div>
+        </div>
+
+        <label>Offer type <span class="req">*</span></label>
+        <select name="price_type" id="priceType" class="visually-hidden-select">
+          <option value="free">Free — give it away</option>
+          <option value="paid">Paid — sell for a price</option>
+          <option value="exchange">Exchange — swap for something</option>
+          <option value="rent">Rent — let others borrow it for a rate</option>
+        </select>
+        <div class="offer-type-cards" id="offerTypeCards">
+          <button type="button" class="offer-type-card" data-value="free"><span class="offer-type-icon">🎁</span><strong>Free</strong><small>Give it away</small></button>
+          <button type="button" class="offer-type-card" data-value="exchange"><span class="offer-type-icon">⇄</span><strong>Swap / Exchange</strong><small>Trade with others</small></button>
+          <button type="button" class="offer-type-card" data-value="paid"><span class="offer-type-icon">🏷</span><strong>Paid / For Sale</strong><small>Selling this item</small></button>
+          <button type="button" class="offer-type-card" data-value="rent"><span class="offer-type-icon">🕐</span><strong>Rent</strong><small>Let others borrow it</small></button>
+        </div>
+        <div id="priceExtra"></div>
+      </div>
+
+      <div class="form-section">
+        <div class="form-section-head"><span class="form-section-num">3</span>Pickup &amp; Location</div>
+
+        <label class="checkbox-row-inline"><input type="checkbox" name="pickup_available" id="pickupAvailable" checked>Pickup is available for this listing</label>
+        <p class="hint" style="margin-top:-4px">Buyers can pick up the item from you.</p>
+
+        ${pickupFieldsHtml()}
+        <p class="hint">Your exact address will not be shared publicly.</p>
+      </div>
+
+      <div class="form-section form-section-special" id="specialOptionsSection">
+        <div class="form-section-head"><span class="form-section-num">4</span>Special Options <span class="hint-inline">(shown when relevant)</span></div>
+
+        <label class="checkbox-row-inline"><input type="checkbox" name="is_recurring" id="isRecurring">${isBusiness ? 'This is a recurring byproduct (e.g. weekly scrap, daily used oil)' : 'This is a recurring surplus (e.g. daily leftover food from my restaurant)'}</label>
+        <div id="freqExtra"></div>
+
+        <div id="foodExtra"></div>
+        <div id="bizSurplusExtra"></div>
+      </div>
+
       <div class="error" id="postError"></div>
-      <button class="primary-btn" type="submit">Post</button>
+      <div class="post-form-footer">
+        <p class="hint post-privacy-note">🔒 Your exact pickup address is never shown publicly.</p>
+        <div class="post-form-actions">
+          <button type="button" class="ghost" id="postCancelBtn">Cancel</button>
+          <button class="primary-btn" type="submit">✓ Post Item</button>
+        </div>
+      </div>
     </form>
   `);
+  const postModalEl = document.querySelector('.modal-overlay .modal');
+  if (postModalEl) postModalEl.classList.add('post-item-modal');
+  $('#postCancelBtn').onclick = () => closeModal();
+
+  // ---------- offer-type card UI (drives the existing #priceType select; no new backend field) ----------
+  const priceTypeSelect = $('#priceType');
+  const offerCards = Array.from(document.querySelectorAll('#offerTypeCards .offer-type-card'));
+  function syncOfferCards() {
+    offerCards.forEach(btn => btn.classList.toggle('active', btn.dataset.value === priceTypeSelect.value));
+  }
+  offerCards.forEach(btn => {
+    btn.onclick = () => {
+      priceTypeSelect.value = btn.dataset.value;
+      priceTypeSelect.dispatchEvent(new Event('change'));
+      syncOfferCards();
+    };
+  });
+  syncOfferCards();
+
+  // ---------- photo dropzone (reuses the existing #mediaInput file input — same name, same
+  // validation, same 5-file/8MB server-side limits; this only adds a preview, no new upload path) ----------
+  const mediaInput = $('#mediaInput');
+  const dropzone = $('#photoDropzone');
+  const photoThumbs = $('#photoThumbs');
+  function renderPhotoThumbs() {
+    const files = Array.from(mediaInput.files || []);
+    photoThumbs.innerHTML = '';
+    files.forEach((file, i) => {
+      const thumb = document.createElement('div');
+      thumb.className = 'photo-thumb';
+      if (file.type.startsWith('image/')) {
+        const url = URL.createObjectURL(file);
+        thumb.innerHTML = `<img src="${url}" alt="">`;
+      } else {
+        thumb.innerHTML = `<span class="photo-thumb-file">🎞️</span>`;
+      }
+      thumb.title = file.name;
+      photoThumbs.appendChild(thumb);
+    });
+  }
+  dropzone.onclick = () => mediaInput.click();
+  dropzone.onkeydown = (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); mediaInput.click(); } };
+  mediaInput.onchange = renderPhotoThumbs;
+  ['dragover', 'dragenter'].forEach(evt => dropzone.addEventListener(evt, (e) => { e.preventDefault(); dropzone.classList.add('dragover'); }));
+  ['dragleave', 'dragend', 'drop'].forEach(evt => dropzone.addEventListener(evt, (e) => { e.preventDefault(); dropzone.classList.remove('dragover'); }));
+  dropzone.addEventListener('drop', (e) => {
+    if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length) {
+      mediaInput.files = e.dataTransfer.files; // same input, same field — just populated via drop
+      renderPhotoThumbs();
+    }
+  });
   const priceExtra = $('#priceExtra');
   const updatePriceExtra = () => {
     const v = $('#priceType').value;
@@ -1443,6 +1554,9 @@ function openPostModal() {
 
   $('#postForm').onsubmit = async (e) => {
     e.preventDefault();
+    const submitBtn = e.target.querySelector('button[type="submit"]');
+    if (submitBtn.disabled) return; // guard against double-tap/double-click firing two submits
+    submitBtn.disabled = true;
     const fd = new FormData(e.target);
     fd.set('is_recurring', $('#isRecurring').checked ? 'true' : 'false');
     fd.set('pickup_available', $('#pickupAvailable').checked ? 'true' : 'false');
@@ -1459,7 +1573,10 @@ function openPostModal() {
       closeModal();
       loadItems();
       loadTrending();
-    } catch (err) { $('#postError').textContent = err.message; }
+    } catch (err) {
+      $('#postError').textContent = err.message;
+      submitBtn.disabled = false; // allow retry after a real error
+    }
   };
 }
 
@@ -1519,7 +1636,7 @@ async function openDetail(id) {
     <h2>${escapeHtml(item.title)}</h2>
     ${badgeHtml(item)}
     <p style="margin-top:12px">${escapeHtml(item.description)}</p>
-    <div class="hint">Category: ${escapeHtml(item.category)} · Condition: ${escapeHtml(item.condition)} ${item.quantity ? '· Qty: ' + escapeHtml(item.quantity) : ''}</div>
+    <div class="hint">Category: ${escapeHtml(displayCategory(item.category))} · Condition: ${escapeHtml(item.condition)} ${item.quantity ? '· Qty: ' + escapeHtml(item.quantity) : ''}</div>
     ${item.price_type === 'exchange' && item.exchange_for ? `<div class="hint">Wants in exchange: ${escapeHtml(item.exchange_for)}</div>` : ''}
     ${item.price_type === 'rent' ? `<div class="hint">Rent: ₹${item.rent_rate}/${escapeHtml(item.rent_period || 'day')}${item.deposit ? ` · Suggested deposit: ₹${item.deposit}` : ''}</div>` : ''}
     ${item.is_recurring ? `<div class="hint">Recurring ${escapeHtml(item.frequency)} surplus posting.</div>` : ''}
@@ -1576,7 +1693,7 @@ function openEditModal(item) {
       <label>Title</label><input name="title" required value="${escapeHtml(item.title)}">
       <label>Description</label><textarea name="description" required>${escapeHtml(item.description)}</textarea>
       <label>Category</label>
-      <select name="category" required>${(item.listing_type === 'business_waste' ? state.businessCategories : state.categories).map(c => `<option value="${escapeHtml(c)}" ${c === item.category ? 'selected' : ''}>${escapeHtml(c)}</option>`).join('')}</select>
+      <select name="category" required>${(item.listing_type === 'business_waste' ? state.businessCategories : state.categories).map(c => `<option value="${escapeHtml(c)}" ${c === displayCategory(item.category) ? 'selected' : ''}>${escapeHtml(c)}</option>`).join('')}</select>
       <div class="row2">
         <div><label>Condition</label>
           <select name="condition">
@@ -1670,13 +1787,19 @@ function openPostRequestModal() {
 
   $('#postRequestForm').onsubmit = async (e) => {
     e.preventDefault();
+    const submitBtn = e.target.querySelector('button[type="submit"]');
+    if (submitBtn.disabled) return; // guard against double-tap/double-click firing two submits
+    submitBtn.disabled = true;
     const fd = Object.fromEntries(new FormData(e.target));
     fd.is_urgent = $('#isUrgent').checked ? 'true' : 'false';
     try {
       await api('/api/requests', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(fd) });
       closeModal();
       loadRequests();
-    } catch (err) { $('#postRequestError').textContent = err.message; }
+    } catch (err) {
+      $('#postRequestError').textContent = err.message;
+      submitBtn.disabled = false;
+    }
   };
 }
 
@@ -1688,7 +1811,7 @@ async function openRequestDetail(id) {
     <h2>${escapeHtml(r.title)}</h2>
     ${requestBadgeHtml(r)}
     <p style="margin-top:12px">${escapeHtml(r.description)}</p>
-    <div class="hint">Category: ${escapeHtml(r.category)} ${r.quantity ? '· Qty: ' + escapeHtml(r.quantity) : ''}</div>
+    <div class="hint">Category: ${escapeHtml(displayCategory(r.category))} ${r.quantity ? '· Qty: ' + escapeHtml(r.quantity) : ''}</div>
     ${r.budget_type === 'exchange' && r.exchange_for ? `<div class="hint">Can exchange for: ${escapeHtml(r.exchange_for)}</div>` : ''}
     <div class="detail-owner">
       Posted by <button type="button" class="owner-name-link" data-uid="${escapeHtml(r.user_id)}"><strong>${escapeHtml(r.owner_name)}</strong></button> ${r.owner_type === 'business' ? '<span class="owner-badge">Business</span>' : '<span class="owner-badge">Individual</span>'}

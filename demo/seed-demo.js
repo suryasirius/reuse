@@ -211,7 +211,7 @@ async function seed() {
   await postItem('amit', { title: 'Office Chairs x10', description: 'Office relocating — 10 ergonomic chairs in good condition, available for pickup.', category: 'Office Furniture & Fixtures', condition: 'used', price_type: 'free', listing_type: 'business_waste' }, 'office-chairs.jpg');
   await postItem('amit', { title: 'CNC Metal Scrap', description: 'Clean metal scrap/offcuts from CNC machining, sorted, roughly 200kg.', category: 'Metal Scrap (CNC/Machining)', condition: 'used', price_type: 'free', listing_type: 'business_waste', is_urgent: 'true' }, 'metal-scrap.jpg');
   const mixer = await postItem('kavya', { title: 'Kitchen Mixer Grinder', description: 'Works perfectly, upgrading to a bigger one. Comes with 2 jars.', category: 'Kitchen & Appliances', condition: 'used', price_type: 'free' }, 'kitchen-mixer.jpg');
-  const toys = await postItem('vijay', { title: 'Kids Toy Set', description: 'Assorted toys, my kids have outgrown them. All working, no broken pieces.', category: 'Toys & Kids', condition: 'used', price_type: 'free' }, 'kids-toys.jpg');
+  const toys = await postItem('vijay', { title: 'Kids Toy Set', description: 'Assorted toys, my kids have outgrown them. All working, no broken pieces.', category: 'Baby & Kids', condition: 'used', price_type: 'free' }, 'kids-toys.jpg');
   const tools = await postItem('rohit', { title: 'Hand Tool Kit', description: 'Basic hand tool kit — hammer, screwdrivers, wrench set, pliers.', category: 'Tools & Equipment', condition: 'used', price_type: 'free' }, 'tool-kit.jpg');
 
   log('\nPosting requests...');

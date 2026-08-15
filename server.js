@@ -219,30 +219,39 @@ app.use('/uploads', express.static(uploadDir, {
 }));
 app.use(express.static(path.join(__dirname, 'public')));
 
+// Canonical consumer-category order (single source of truth — drives the sidebar, Post/Edit Item
+// dropdowns, and homepage highlights everywhere, via GET /api/me -> state.categories in app.js).
+// 'Baby Products' and 'Toys & Kids' were merged into 'Baby & Kids' — see LEGACY_CATEGORY_MERGE
+// below for how existing rows carrying the old values stay discoverable without a DB rewrite.
 const CATEGORIES = [
-  'Education & School Supplies',
-  'Toys & Kids',
-  'Baby Products',
-  'Books & Media',
-  'Construction Materials',
+  'Furniture',
+  'Food (Surplus)',
   'Electronics & Phones',
   'Computers & Laptops',
-  'Furniture',
-  'Vehicles',
-  'Clothing & Accessories',
+  'Education & School Supplies',
+  'Construction Materials',
+  'Baby & Kids',
   'Kitchen & Appliances',
-  'Food (Surplus)',
+  'Clothing & Accessories',
   'Tools & Equipment',
+  'Books & Media',
+  'Vehicles',
   'Event Items & Decorations',
   'Other'
 ];
 
+// Category-merge compatibility map: maps a canonical category to the legacy category values it
+// replaces. Existing item/request rows are never rewritten — this is consulted anywhere category
+// is matched (filtering, homepage highlights) so old rows stay fully discoverable under the new
+// name. Extend this map (don't add a second array) if another category is ever merged/renamed.
+const LEGACY_CATEGORY_MERGE = { 'Baby & Kids': ['Baby Products', 'Toys & Kids'] };
+function categoryFilterValues(cat) { return [cat, ...(LEGACY_CATEGORY_MERGE[cat] || [])]; }
+
 // Homepage priority sections: which categories feed each featured strip.
 // Final homepage order (confirmed with user): Urgent Requests -> Most Wanted (trending) -> Construction -> Educational.
-// Toys & Kids was removed from the priority sections per user request; it stays as a normal browsable category.
 const HOME_HIGHLIGHT_GROUPS = [
   { key: 'construction', label: 'Construction Site Leftovers', icon: '🏗️', categories: ['Construction Materials'] },
-  { key: 'education', label: "Educational & Children's Needs", icon: '🎓', categories: ['Education & School Supplies', 'Baby Products', 'Books & Media'] }
+  { key: 'education', label: "Educational & Children's Needs", icon: '🎓', categories: ['Education & School Supplies', ...categoryFilterValues('Baby & Kids'), 'Books & Media'] }
 ];
 
 const SERVICE_CATEGORIES = [
@@ -558,7 +567,13 @@ app.get('/api/items', (req, res) => {
   const params = [];
   // "mine" (My posts) shows both listing types for that user; otherwise filter by section.
   if (!mine) { sql += ' AND items.listing_type = ?'; params.push(listing_type === 'business_waste' ? 'business_waste' : 'consumer'); }
-  if (category) { sql += ' AND items.category = ?'; params.push(category); }
+  if (category) {
+    // Expand merged categories (e.g. 'Baby & Kids') so legacy rows still stored under the old
+    // category names ('Baby Products'/'Toys & Kids') remain discoverable — see LEGACY_CATEGORY_MERGE.
+    const catValues = categoryFilterValues(category);
+    sql += ` AND items.category IN (${catValues.map(() => '?').join(',')})`;
+    params.push(...catValues);
+  }
   if (price_type) { sql += ' AND items.price_type = ?'; params.push(price_type); }
   if (location) { sql += ' AND users.location LIKE ?'; params.push(`%${location}%`); }
   if (q) { sql += ' AND (items.title LIKE ? OR items.description LIKE ?)'; params.push(`%${q}%`, `%${q}%`); }
@@ -1045,7 +1060,11 @@ app.get('/api/requests', (req, res) => {
              FROM requests JOIN users ON requests.user_id = users.id WHERE requests.status != 'closed'`;
   const params = [];
   if (!mine) { sql += " AND requests.request_type = ?"; params.push(request_type === 'service' ? 'service' : 'thing'); }
-  if (category) { sql += ' AND requests.category = ?'; params.push(category); }
+  if (category) {
+    const catValues = categoryFilterValues(category);
+    sql += ` AND requests.category IN (${catValues.map(() => '?').join(',')})`;
+    params.push(...catValues);
+  }
   if (urgent) { sql += ' AND requests.is_urgent = 1'; }
   if (location) { sql += ' AND users.location LIKE ?'; params.push(`%${location}%`); }
   if (q) { sql += ' AND (requests.title LIKE ? OR requests.description LIKE ?)'; params.push(`%${q}%`, `%${q}%`); }
