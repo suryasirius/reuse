@@ -1182,28 +1182,18 @@ html,body{overflow-x:hidden;max-width:100%}
   main{display:flex;flex-direction:column;gap:16px}
   .page-layout{display:contents}
 
-  /* ---- reorder: hero/search -> quick actions -> actual listings -> categories ->
-     urgent/business (only if content) -> champions -> impact -> mission -> CTA -> trust.
-     Round 2 refinement: listings and categories now come BEFORE champions/urgent, not after —
-     a new user should see real marketplace activity within the first couple of screens. ---- */
-  #nearbySection{order:10}
-  .hero-banner{order:20;margin-bottom:0}
-  #statsStrip{order:22}
-  #quickActionsSection{order:25;display:flex}
-  #trendingSection{order:30}
-  .main-col{order:31;flex:none}
-  #collectionsSection{order:35}
-  .sidebar{order:40;margin-bottom:0}
-  #urgentSection{order:50}
-  #urgentFoodSection{order:51}
-  #businessTeaserPreviewSection{order:52;display:block}
-  #businessSurplusIntro{order:53}
-  #reqTypeTabs{order:54;margin-bottom:0}
-  #championsSection{order:90;margin:0}
-  #ecoPanel{order:100}
-  #communitySection{order:110}
-  #businessTeaserSection{order:120}
-  .trust-strip{order:130;margin-top:0;grid-template-columns:1fr 1fr;gap:10px}
+  /* Nav-redesign lock (both desktop and mobile now share ONE source-order hierarchy: header ->
+     nearby -> search -> trending -> people-asking-for-help -> champions -> categories ->
+     business/impact -> trust/footer — see index.html). No `order:` overrides needed any more;
+     mobile just follows natural DOM order like desktop does. Only sizing/display tweaks remain. */
+  .hero-banner{margin-bottom:0}
+  #quickActionsSection{display:flex}
+  .main-col{flex:none}
+  .sidebar{margin-bottom:0}
+  #businessTeaserPreviewSection{display:block}
+  #reqTypeTabs{margin-bottom:0}
+  #championsSection{margin:0}
+  .trust-strip{margin-top:0;grid-template-columns:1fr 1fr;gap:10px}
 
   /* ---- Quick Actions row: icon + title + subtitle cards ---- */
   .quick-actions{gap:10px}

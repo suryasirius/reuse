@@ -145,7 +145,11 @@
 
   <div class="stats-strip" id="statsStrip"></div>
 
-  <section class="champions-section" id="championsSection"></section>
+  <!-- Homepage hierarchy (locked, applies to both desktop and mobile — same DOM order for both):
+       Header -> Nearby -> Search -> Trending -> People asking for help -> Champions -> Categories ->
+       Business Surplus/Impact -> Trust & footer. Marketplace content (Trending) now comes before
+       Champions/community content, matching the "marketplace first, community second" decision. -->
+  <div id="trendingSection"></div>
 
   <div id="urgentSection" class="homepage-section"></div>
   <div id="urgentFoodSection" class="homepage-section"></div>
@@ -154,9 +158,7 @@
     <button class="chip" data-rt="service">Services I need</button>
   </div>
 
-  <div id="trendingSection"></div>
-  <div id="businessTeaserPreviewSection" class="homepage-section mobile-only-section"></div>
-  <div id="businessSurplusIntro" class="homepage-section"></div>
+  <section class="champions-section" id="championsSection"></section>
 
   <div class="page-layout">
     <aside class="sidebar">
@@ -179,6 +181,8 @@
     </aside>
   </div>
 
+  <div id="businessTeaserPreviewSection" class="homepage-section mobile-only-section"></div>
+  <div id="businessSurplusIntro" class="homepage-section"></div>
   <div id="communitySection" class="homepage-section"></div>
   <div id="businessTeaserSection" class="homepage-section"></div>
   <div id="collectionsSection" class="homepage-section"></div>
