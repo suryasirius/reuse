@@ -2,7 +2,11 @@ const state = {
   user: null, categories: [], businessCategories: [], serviceCategories: [],
   section: 'consumer', requestType: 'thing', urgentOnly: false, sort: '',
   items: [], requests: [], category: '', priceType: '', q: '', location: '',
-  wishlist: new Set(), monthlyBadges: null
+  wishlist: new Set(), monthlyBadges: null,
+  // Mobile-only Home/Browse split (nav redesign Stage 3) — desktop never reads this; it always
+  // shows the single continuous page it always has. 'home' = curated homepage (Trending preview,
+  // People asking for help, Champions, compact Impact card). 'browse' = full categories + grid.
+  view: 'home'
 };
 
 const SECTION_HINTS = {
@@ -51,6 +55,7 @@ async function init() {
   bindSectionTabs();
   bindReqTypeTabs();
   bindTopBar();
+  bindBottomNav();
   applySectionUi();
   loadEcoPanel();
   loadStatsStrip();
@@ -440,6 +445,11 @@ async function refreshNotifCount() {
   const dot = $('#notifDot');
   if (dot) dot.textContent = count > 0 ? String(count) : '';
   if (dot) dot.style.display = count > 0 ? '' : 'none';
+  // Mirror the same unread state onto the mobile bottom-nav Profile tab (notifications now live
+  // inside Profile on mobile — see bindBottomNav()) so the badge is visible without duplicating
+  // the notification-count logic.
+  const bnDot = $('#bottomNavProfileDot');
+  if (bnDot) bnDot.style.display = count > 0 ? '' : 'none';
 }
 
 const TREND_TABS = [
@@ -542,6 +552,106 @@ function bindTopBar() {
   $('#filterSort').onchange = e => {
     state.sort = e.target.value;
     state.section === 'requests' ? loadRequests() : loadItems();
+  };
+}
+
+// ---------- mobile bottom navigation + Post action sheet (nav redesign Stage 2) ----------
+// Every action here routes to an existing function/handler — no new posting, browsing, or
+// profile logic is introduced. Desktop is untouched: none of this markup is visible there
+// (see .mobile-only-section / #bottomNav in styles.css).
+function setBottomNavActive(key) {
+  document.querySelectorAll('.bottom-nav-item').forEach(el => el.classList.toggle('active', el.dataset.bn === key));
+}
+
+// Mobile-only Home/Browse split. Pure CSS toggle (body.view-browse, scoped inside the existing
+// max-width:600px media query) — desktop is never affected since it doesn't read state.view or
+// the body class at all. No content is duplicated: Browse just reveals the same #categories
+// sidebar + #content grid that already exist, Home just hides them in favor of the previews.
+function setMobileView(view) {
+  state.view = view;
+  document.body.classList.toggle('view-browse', view === 'browse');
+}
+
+function openPostSheet() {
+  $('#postSheetOverlay').style.display = 'flex';
+}
+function closePostSheet() {
+  $('#postSheetOverlay').style.display = 'none';
+}
+
+function openProfileSheet() {
+  if (!state.user) return openAuthModal('login');
+  const notifLabel = ($('#notifDot') && $('#notifDot').style.display !== 'none') ? `Notifications (${$('#notifDot').textContent})` : 'Notifications';
+  showModal(`
+    <h2>Profile</h2>
+    <p class="hint" style="margin-top:-4px">Hi, ${escapeHtml(state.user.name)} ${state.user.account_type === 'business' ? '🏢' : ''}</p>
+    <div class="profile-sheet-list">
+      <button type="button" class="profile-sheet-item" id="profileSheetNotif">🔔 ${notifLabel}</button>
+      <button type="button" class="profile-sheet-item" id="profileSheetMyPosts">📦 My posts</button>
+      <button type="button" class="profile-sheet-item" id="profileSheetActivity">📋 Activity</button>
+      ${state.user.is_admin ? '<button type="button" class="profile-sheet-item" id="profileSheetAdmin">🛡️ Admin</button>' : ''}
+      <button type="button" class="profile-sheet-item danger" id="profileSheetLogout">🚪 Log out</button>
+    </div>
+  `);
+  $('#profileSheetNotif').onclick = () => { closeModal(); toggleNotifPanel(); };
+  $('#profileSheetMyPosts').onclick = () => { closeModal(); openMyPosts(); };
+  $('#profileSheetActivity').onclick = () => { closeModal(); openActivity(); };
+  if (state.user.is_admin) $('#profileSheetAdmin').onclick = () => { closeModal(); openAdminDashboard(); };
+  $('#profileSheetLogout').onclick = async () => { closeModal(); await api('/api/logout', { method: 'POST' }); state.user = null; renderNav(); loadItems(); };
+}
+
+function bindBottomNav() {
+  const bottomNav = $('#bottomNav');
+  if (!bottomNav) return;
+
+  $('#bnHomeBtn').onclick = () => {
+    const consumerTab = document.querySelector('.section-tab[data-section="consumer"]');
+    if (consumerTab && !consumerTab.classList.contains('active')) consumerTab.click();
+    setMobileView('home');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+    setBottomNavActive('home');
+  };
+  $('#bnBrowseBtn').onclick = () => {
+    const consumerTab = document.querySelector('.section-tab[data-section="consumer"]');
+    if (consumerTab && !consumerTab.classList.contains('active')) consumerTab.click();
+    setMobileView('browse');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+    setBottomNavActive('browse');
+  };
+  $('#bnRequestsBtn').onclick = () => {
+    const tab = document.querySelector('.section-tab[data-section="requests"]');
+    if (tab) tab.click();
+    // Requests needs the categories/listing area visible (same as Browse), just highlighted
+    // as its own bottom-nav tab rather than "Browse".
+    setMobileView('browse');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+    setBottomNavActive('requests');
+  };
+  $('#bnProfileBtn').onclick = () => { openProfileSheet(); };
+  $('#bnPostBtn').onclick = () => openPostSheet();
+
+  $('#postSheetOverlay').onclick = (e) => { if (e.target.id === 'postSheetOverlay') closePostSheet(); };
+  $('#sheetCancelBtn').onclick = () => closePostSheet();
+  $('#sheetPostItemBtn').onclick = () => {
+    closePostSheet();
+    if (!state.user) return openAuthModal('login');
+    const tab = document.querySelector('.section-tab[data-section="consumer"]');
+    if (tab) tab.click();
+    openPostModal();
+  };
+  $('#sheetPostRequestBtn').onclick = () => {
+    closePostSheet();
+    if (!state.user) return openAuthModal('login');
+    const tab = document.querySelector('.section-tab[data-section="requests"]');
+    if (tab) tab.click();
+    openPostRequestModal();
+  };
+  $('#sheetPostBusinessBtn').onclick = () => {
+    closePostSheet();
+    if (!state.user) return openAuthModal('login');
+    const tab = document.querySelector('.section-tab[data-section="business_waste"]');
+    if (tab) tab.click();
+    openPostModal();
   };
 }
 

@@ -242,6 +242,49 @@
   <div class="footer-bottom">© 2026 ReUse Hub. Building a circular economy, one item at a time.</div>
 </footer>
 
+<!-- Mobile bottom navigation (nav redesign Stage 2). Desktop keeps the existing header nav
+     untouched — this is shown only at the mobile breakpoint via .mobile-only-section. -->
+<nav class="bottom-nav mobile-only-section" id="bottomNav">
+  <button type="button" class="bottom-nav-item active" id="bnHomeBtn" data-bn="home">
+    <i data-lucide="home"></i><span>Home</span>
+  </button>
+  <button type="button" class="bottom-nav-item" id="bnBrowseBtn" data-bn="browse">
+    <i data-lucide="layout-grid"></i><span>Browse</span>
+  </button>
+  <button type="button" class="bottom-nav-post" id="bnPostBtn" aria-label="Post">
+    <i data-lucide="plus"></i>
+  </button>
+  <button type="button" class="bottom-nav-item" id="bnRequestsBtn" data-bn="requests">
+    <i data-lucide="hand-heart"></i><span>Requests</span>
+  </button>
+  <button type="button" class="bottom-nav-item" id="bnProfileBtn" data-bn="profile">
+    <i data-lucide="user"></i><span>Profile</span>
+    <span class="bottom-nav-dot" id="bottomNavProfileDot" style="display:none"></span>
+  </button>
+</nav>
+
+<!-- Post action sheet (nav redesign Stage 2) — replaces the old mobile Quick Actions row.
+     Routes to the exact same posting flows/modals that already exist; no new posting logic. -->
+<div class="action-sheet-overlay" id="postSheetOverlay" style="display:none">
+  <div class="action-sheet" id="postSheet">
+    <div class="action-sheet-handle"></div>
+    <h3>What would you like to post?</h3>
+    <button type="button" class="action-sheet-option primary" id="sheetPostItemBtn">
+      <span class="action-sheet-icon give">🟢</span>
+      <span class="action-sheet-text"><strong>Give something away</strong><small>Post an item</small></span>
+    </button>
+    <button type="button" class="action-sheet-option" id="sheetPostRequestBtn">
+      <span class="action-sheet-icon ask">🔵</span>
+      <span class="action-sheet-text"><strong>Ask for something</strong><small>Post a request</small></span>
+    </button>
+    <button type="button" class="action-sheet-option secondary" id="sheetPostBusinessBtn">
+      <span class="action-sheet-icon biz">🟠</span>
+      <span class="action-sheet-text"><strong>Business surplus</strong><small>For businesses</small></span>
+    </button>
+    <button type="button" class="action-sheet-cancel" id="sheetCancelBtn">Cancel</button>
+  </div>
+</div>
+
 <div id="modalRoot"></div>
 <script src="/app.js"></script>
 </body>
