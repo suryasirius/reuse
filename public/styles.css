@@ -578,6 +578,7 @@ main{max-width:1800px;width:calc(100vw - 64px);margin:0 auto;padding:14px 12px 6
 .highlight-wrap.hl-education{background:linear-gradient(160deg,#fff,var(--brand-softer))}
 .highlight-wrap.hl-construction{background:linear-gradient(160deg,#fff,#fff6ec)}
 .highlight-wrap.hl-urgent{background:linear-gradient(160deg,#fff,#fdeeee);border-color:#f6d3d3}
+.highlight-wrap.hl-service{background:linear-gradient(160deg,#fff,#eef1fd);border-color:#dbe1f7}
 .highlight-wrap h2{font-size:15px;margin:0 0 4px;display:flex;align-items:center;justify-content:space-between;gap:8px;font-weight:800}
 .highlight-wrap .highlight-sub{font-size:12.5px;color:var(--muted);margin:0 0 12px}
 .highlight-wrap .grid{grid-template-columns:repeat(auto-fill,minmax(190px,1fr))}
@@ -1371,6 +1372,7 @@ html,body{overflow-x:hidden;max-width:100%}
   body.view-browse #statsStrip,
   body.view-browse #trendingSection,
   body.view-browse #urgentSection,
+  body.view-browse #serviceRequestsSection,
   body.view-browse #urgentFoodSection,
   body.view-browse #championsSection,
   body.view-browse #ecoPanel,

@@ -177,6 +177,7 @@ function applySectionUi() {
   $('#priceFilter').style.display = isRequests ? 'none' : '';
   $('#trendingSection').innerHTML = '';
   $('#urgentSection').innerHTML = '';
+  if ($('#serviceRequestsSection')) $('#serviceRequestsSection').innerHTML = '';
   $('#urgentFoodSection').innerHTML = '';
   $('#businessSurplusIntro').innerHTML = '';
   $('#communitySection').innerHTML = '';
@@ -193,6 +194,7 @@ function applySectionUi() {
   if (state.section === 'consumer') {
     // Homepage order: Urgent Requests -> Urgent Food Rescue -> Trending (tabs) -> Categories+Products+Impact -> Community Story -> Business teaser -> Popular Collections.
     loadUrgentRequests();
+    loadServiceRequestsPreview();
     loadUrgentFood();
     loadCollections();
     loadCommunityStory();
@@ -215,6 +217,31 @@ async function loadUrgentRequests() {
   </div>`;
   el.querySelectorAll('.card').forEach(c => c.onclick = () => openRequestDetail(c.dataset.id));
   if ($('#urgentViewAll')) $('#urgentViewAll').onclick = () => openUrgentAllModal(items);
+}
+
+// Dedicated "Service requests" discovery strip — distinct from item requests (electrician,
+// plumber, carpenter, etc. vs "need a bicycle"). Uses the existing /api/requests?request_type=
+// service endpoint and requestCardHtml() (already renders the 🛠️ icon + Service badge), so this
+// is a new homepage section, not new backend functionality.
+async function loadServiceRequestsPreview() {
+  const el = $('#serviceRequestsSection');
+  if (!el) return;
+  if (state.section === 'requests') { el.innerHTML = ''; return; }
+  let items = [];
+  try { items = await api('/api/requests?request_type=service&sort=newest'); } catch (e) { /* non-critical */ }
+  if (!items.length) { el.innerHTML = ''; return; }
+  const shown = items.slice(0, 4);
+  el.innerHTML = `<div class="highlight-wrap hl-service">
+    <h2>🔧 Services people need ${items.length > 4 ? `<button class="view-all-link" id="serviceReqViewAll">View all (${items.length}) →</button>` : ''}</h2>
+    <p class="highlight-sub">Electrician, plumber, carpenter and more — offer your help nearby.</p>
+    <div class="grid hscroll">${shown.map(requestCardHtml).join('')}</div>
+  </div>`;
+  el.querySelectorAll('.card').forEach(c => c.onclick = () => openRequestDetail(c.dataset.id));
+  if ($('#serviceReqViewAll')) $('#serviceReqViewAll').onclick = () => openServiceRequestsAllModal(items);
+}
+function openServiceRequestsAllModal(items) {
+  showModal(`<h2>🔧 All service requests</h2><div class="grid" style="margin-top:14px">${items.map(requestCardHtml).join('')}</div>`);
+  modalRoot.querySelectorAll('.card').forEach(c => c.onclick = () => { closeModal(); openRequestDetail(c.dataset.id); });
 }
 
 async function loadUrgentFood() {
