@@ -18,7 +18,7 @@
     </div>
     <div class="section-tabs" id="sectionTabs">
       <button class="section-tab active" data-section="consumer">Give &amp; Take</button>
-      <button class="section-tab" data-section="business_waste">Business Surplus</button>
+      <button class="section-tab" data-section="business_waste">Business Surplus <span class="new-badge">NEW</span></button>
       <button class="section-tab" data-section="requests">Requests</button>
     </div>
     <div class="capsule-actions">
@@ -29,6 +29,7 @@
         <button type="button" class="ghost more-menu-btn" id="moreMenuBtn">More <i data-lucide="chevron-down"></i></button>
         <div class="more-menu-dropdown" id="moreMenuDropdown">
           <button type="button" data-more="categories"><i data-lucide="layout-grid"></i> Categories</button>
+          <button type="button" data-more="business"><i data-lucide="building-2"></i> Business Surplus <span class="new-badge">NEW</span></button>
           <button type="button" data-more="nearby"><i data-lucide="map-pin"></i> Nearby</button>
           <button type="button" data-more="filters"><i data-lucide="sliders-horizontal"></i> Filters</button>
           <button type="button" data-more="champions"><i data-lucide="trophy"></i> Monthly Champions</button>
@@ -175,6 +176,11 @@
   </div>
 
   <section class="champions-section" id="championsSection"></section>
+
+  <!-- Quick-browse category shortcuts (visual pass to match the OLX-style reference mockup) —
+       additive only: clicking one just sets the existing category filter and scrolls to the
+       existing #categories/#content area below. Doesn't replace or change that area's behavior. -->
+  <div class="quick-categories-row" id="quickCategoriesRow"></div>
 
   <div class="page-layout">
     <aside class="sidebar">

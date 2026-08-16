@@ -325,4 +325,31 @@ for (const [col, sql] of Object.entries(reportMigrations)) {
 db.exec("CREATE INDEX IF NOT EXISTS idx_reports_status ON reports(status)");
 db.exec("CREATE INDEX IF NOT EXISTS idx_moderation_actions_created ON moderation_actions(created_at)");
 
+// Migration: Image Moderation V1. status defaults to 'approved' so every existing row (posted
+// before this feature existed) stays exactly as visible as it always was — this migration never
+// hides or breaks historical images. Going forward, server.js's upload flow explicitly sets
+// status to 'pending_review' or 'approved' per image at upload time (see moderateImage()); it
+// only relies on this column default for pre-existing rows.
+const itemMediaColumns = db.prepare("PRAGMA table_info(item_media)").all().map(c => c.name);
+const itemMediaMigrations = {
+  status: "ALTER TABLE item_media ADD COLUMN status TEXT DEFAULT 'approved'", // approved | pending_review
+  moderation_note: "ALTER TABLE item_media ADD COLUMN moderation_note TEXT DEFAULT ''",
+  moderated_at: "ALTER TABLE item_media ADD COLUMN moderated_at TEXT DEFAULT NULL",
+  moderated_by: "ALTER TABLE item_media ADD COLUMN moderated_by TEXT DEFAULT NULL" // admin user id, or 'auto' for an API decision
+};
+for (const [col, sql] of Object.entries(itemMediaMigrations)) {
+  if (!itemMediaColumns.includes(col)) db.exec(sql);
+}
+db.exec("CREATE INDEX IF NOT EXISTS idx_item_media_status ON item_media(status)");
+
+// Hard monthly usage cap for the moderation API (avoids surprise billing on a free/metered tier).
+// One row per calendar month (month_key = 'YYYY-MM'); server.js increments this on every API call
+// and refuses to call the provider again once MODERATION_MONTHLY_LIMIT is reached that month.
+db.exec(`
+CREATE TABLE IF NOT EXISTS moderation_usage (
+  month_key TEXT PRIMARY KEY,
+  count INTEGER NOT NULL DEFAULT 0
+)
+`);
+
 module.exports = db;

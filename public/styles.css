@@ -74,6 +74,32 @@ header .logo{
 }
 .nav-capsule .section-tab:hover{color:var(--text);background:none}
 .nav-capsule .section-tab.active{color:var(--brand);background:none;border-bottom-color:var(--brand)}
+.new-badge{
+  display:inline-block;background:#f2994a;color:#fff;font-size:9px;font-weight:800;
+  letter-spacing:.03em;padding:2px 6px;border-radius:99px;vertical-align:middle;margin-left:2px;
+}
+.more-menu-dropdown .new-badge{margin-left:auto}
+
+/* ---- Quick-browse category icon row (visual pass) ---- */
+.quick-categories-row{display:flex;gap:18px;overflow-x:auto;padding:6px 2px 18px;margin-bottom:4px}
+.quick-cat-btn{
+  display:flex;flex-direction:column;align-items:center;gap:6px;background:none;border:none;
+  cursor:pointer;flex-shrink:0;width:72px;
+}
+.quick-cat-icon{
+  width:52px;height:52px;border-radius:50%;display:flex;align-items:center;justify-content:center;
+  color:#fff;box-shadow:0 3px 8px rgba(0,0,0,.12);transition:transform .15s var(--ease);
+}
+.quick-cat-icon [data-lucide]{width:22px;height:22px}
+.quick-cat-btn:hover .quick-cat-icon{transform:translateY(-2px) scale(1.05)}
+.quick-cat-label{font-size:11px;font-weight:700;color:var(--text);text-align:center;line-height:1.25}
+@media (max-width:600px){
+  .quick-categories-row{gap:14px;padding:4px 2px 14px}
+  .quick-cat-btn{width:60px}
+  .quick-cat-icon{width:44px;height:44px}
+  .quick-cat-icon [data-lucide]{width:18px;height:18px}
+  .quick-cat-label{font-size:10px}
+}
 .capsule-actions{display:flex;align-items:center;gap:10px}
 .capsule-actions .primary-btn{
   margin-top:0;height:42px;padding:0 18px;border-radius:14px;
@@ -1130,6 +1156,7 @@ html,body{overflow-x:hidden;max-width:100%}
 .admin-tabs{display:flex;gap:8px;margin:14px 0}
 .admin-status-filter{display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap}
 .admin-report-row{border:1px solid var(--border-soft);border-radius:var(--radius-md);padding:12px 14px;margin-bottom:10px}
+.admin-flagged-thumb{width:100%;max-width:220px;max-height:220px;object-fit:cover;border-radius:var(--radius-sm);margin-bottom:8px;display:block;background:#eef1ec}
 .admin-report-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
 .admin-report-actions .ghost{font-size:12px;padding:6px 12px}
 .admin-log{display:flex;flex-direction:column;gap:8px}

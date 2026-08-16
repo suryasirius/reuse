@@ -241,6 +241,7 @@ function applySectionUi() {
   $('#postBtn').innerHTML = `<i data-lucide="plus"></i> ${postLabel}`;
   if (window.lucide) lucide.createIcons();
   renderCategories();
+  renderQuickCategories();
   if (isRequests) { loadRequests(); } else { loadItems(); loadTrending(); }
   loadBusinessTeaser();
   if (state.section === 'consumer') {
@@ -666,6 +667,7 @@ function bindMoreMenu() {
   const scrollTo = (sel) => { const el = document.querySelector(sel); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' }); };
   const MORE_ACTIONS = {
     categories: () => scrollTo('.page-layout'),
+    business: () => { const tab = document.querySelector('.section-tab[data-section="business_waste"]'); if (tab) tab.click(); window.scrollTo({ top: 0, behavior: 'smooth' }); },
     nearby: () => scrollTo('#nearbySection'),
     filters: () => { scrollTo('.hero-banner'); const panel = $('#filtersPanel'); if (panel) panel.style.display = 'flex'; },
     champions: () => scrollTo('#championsSection'),
@@ -746,6 +748,29 @@ const CATEGORY_ICONS = {
 // against the current canonical dropdown options, run it through this map first.
 const LEGACY_CATEGORY_LABELS = { 'Baby Products': 'Baby & Kids', 'Toys & Kids': 'Baby & Kids' };
 function displayCategory(cat) { return LEGACY_CATEGORY_LABELS[cat] || cat; }
+
+// Rotating background colors for the quick-category icon row (visual only — purely decorative,
+// doesn't affect which category a click actually applies).
+const QUICK_CAT_COLORS = ['#2E8B77', '#3B82C4', '#D97B3F', '#C4457A', '#7B5FC4', '#4FA35C', '#C4903B'];
+function renderQuickCategories() {
+  const row = $('#quickCategoriesRow');
+  if (!row) return;
+  if (state.section !== 'consumer') { row.innerHTML = ''; return; }
+  const cats = activeCategoryList().slice(0, 10);
+  row.innerHTML = cats.map((c, i) => `
+    <button type="button" class="quick-cat-btn" data-c="${escapeHtml(c)}">
+      <span class="quick-cat-icon" style="background:${QUICK_CAT_COLORS[i % QUICK_CAT_COLORS.length]}"><i data-lucide="${CATEGORY_ICONS[c] || 'package'}"></i></span>
+      <span class="quick-cat-label">${escapeHtml(c)}</span>
+    </button>
+  `).join('');
+  row.querySelectorAll('.quick-cat-btn').forEach(btn => btn.onclick = () => {
+    state.category = btn.dataset.c;
+    renderCategories();
+    loadItems();
+    document.querySelector('.page-layout')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  });
+  if (window.lucide) lucide.createIcons();
+}
 
 function renderCategories() {
   const wrap = $('#categories');
@@ -1705,10 +1730,15 @@ function openPostModal() {
     const edibleEl = document.getElementById('isEdibleFood');
     fd.set('is_edible_food', edibleEl && edibleEl.checked ? 'true' : 'false');
     try {
-      await api('/api/items', { method: 'POST', body: fd });
+      const posted = await api('/api/items', { method: 'POST', body: fd });
       closeModal();
       loadItems();
       loadTrending();
+      // Image Moderation V1: a photo can land in review instead of publishing instantly — let the
+      // poster know rather than leaving them wondering why a photo they uploaded isn't showing yet.
+      if (posted && posted.pending_media_count > 0) {
+        alert(`Your listing is live! ${posted.pending_media_count} photo${posted.pending_media_count > 1 ? 's are' : ' is'} still being reviewed and will appear once approved (usually quick).`);
+      }
     } catch (err) {
       $('#postError').textContent = err.message;
       submitBtn.disabled = false; // allow retry after a real error
@@ -2025,12 +2055,52 @@ async function openAdminDashboard(tab = 'reports', statusFilter = 'open') {
     <h2>🛡️ Admin</h2>
     <div class="admin-tabs">
       <button class="chip ${tab === 'reports' ? 'active' : ''}" id="adminTabReports">Reports</button>
+      <button class="chip ${tab === 'images' ? 'active' : ''}" id="adminTabImages">Flagged Images</button>
       <button class="chip ${tab === 'log' ? 'active' : ''}" id="adminTabLog">Moderation history</button>
     </div>
     <div id="adminTabContent">Loading...</div>
   `);
   $('#adminTabReports').onclick = () => openAdminDashboard('reports', statusFilter);
+  $('#adminTabImages').onclick = () => openAdminDashboard('images');
   $('#adminTabLog').onclick = () => openAdminDashboard('log');
+
+  if (tab === 'images') {
+    try {
+      const rows = await api('/api/admin/images/pending');
+      $('#adminTabContent').innerHTML = rows.length ? `
+        <div class="admin-reports">${rows.map(m => `
+          <div class="admin-report-row" data-media-id="${m.id}">
+            <img class="admin-flagged-thumb" src="/api/admin/images/${m.id}/file" alt="Pending review" loading="lazy">
+            <div><strong>${escapeHtml(m.item_title)}</strong> <span class="hint">by ${escapeHtml(m.owner_name)}</span></div>
+            <div class="hint">${escapeHtml(m.moderation_note || '')} · ${escapeHtml(m.created_at)}</div>
+            <div class="admin-report-actions">
+              <button type="button" class="ghost admin-img-act" data-act="approve">Approve</button>
+              <button type="button" class="ghost admin-img-act" data-act="reject">Reject</button>
+            </div>
+          </div>`).join('')}</div>
+      ` : `<div class="empty">No images awaiting review.</div>`;
+      document.querySelectorAll('.admin-report-row[data-media-id]').forEach(row => {
+        const mediaId = row.dataset.mediaId;
+        const approveBtn = row.querySelector('[data-act="approve"]');
+        if (approveBtn) approveBtn.onclick = async () => {
+          try { await api('/api/admin/images/' + mediaId + '/approve', { method: 'POST' }); openAdminDashboard('images'); }
+          catch (e) { alert(e.message); }
+        };
+        const rejectBtn = row.querySelector('[data-act="reject"]');
+        if (rejectBtn) rejectBtn.onclick = async () => {
+          const note = prompt('Optional reason (shown to the poster):') || '';
+          if (!confirm('Reject and remove this image?')) return;
+          try {
+            await api('/api/admin/images/' + mediaId + '/reject', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ note }) });
+            openAdminDashboard('images');
+          } catch (e) { alert(e.message); }
+        };
+      });
+    } catch (e) {
+      $('#adminTabContent').innerHTML = `<div class="empty">Could not load flagged images.</div>`;
+    }
+    return;
+  }
 
   if (tab === 'log') {
     try {

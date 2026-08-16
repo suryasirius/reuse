@@ -76,6 +76,13 @@ const reportLimiter = rateLimit({ windowMs: 60 * 60 * 1000, max: 10, standardHea
 const uploadDir = process.env.UPLOAD_DIR ? path.join(__dirname, process.env.UPLOAD_DIR) : path.join(__dirname, 'public', 'uploads');
 fs.mkdirSync(uploadDir, { recursive: true });
 
+// Image Moderation V1: every uploaded file lands here first — a private directory never mounted
+// by express.static, so nothing here is ever publicly reachable by URL. Files only move into
+// uploadDir (public) once moderateImage() below approves them. QUARANTINE_DIR mirrors UPLOAD_DIR's
+// env-var pattern so the demo environment can keep its own separate quarantine too.
+const quarantineDir = process.env.QUARANTINE_DIR ? path.join(__dirname, process.env.QUARANTINE_DIR) : path.join(__dirname, 'quarantine');
+fs.mkdirSync(quarantineDir, { recursive: true });
+
 // ---------- upload security ----------
 // Only these three formats are accepted. The stored file extension is derived from this map,
 // NEVER from the client-supplied original filename or its extension — that's what stops both
@@ -90,7 +97,9 @@ const MAX_UPLOAD_FILE_BYTES = 8 * 1024 * 1024; // 8MB — generous for a photo, 
 const MAX_UPLOAD_FILES = 5;
 
 const storage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, uploadDir),
+  // Image Moderation V1: files always land in quarantine first, never directly in the public
+  // uploadDir — see moderateImage()/the POST /api/items handler for how (and whether) they move.
+  destination: (req, file, cb) => cb(null, quarantineDir),
   filename: (req, file, cb) => {
     const type = ALLOWED_IMAGE_TYPES[file.mimetype];
     // Filter below rejects unknown mimetypes before this runs, but fail safe with a generic
@@ -163,10 +172,88 @@ function validateUploadedFiles(files) {
   return true;
 }
 
+// Public reads only ever see approved media — pending/rejected images are never exposed by URL
+// to anyone but an admin (via the dedicated /api/admin/images/:id/file route below). The owner
+// isn't shown their own pending photo either (kept simple for V1); they get a text count instead
+// (see pending_media_count below) so they at least know a review is in progress.
 function attachMedia(item) {
-  const media = db.prepare('SELECT id, url, media_type FROM item_media WHERE item_id = ? ORDER BY position ASC').all(item.id);
+  const media = db.prepare("SELECT id, url, media_type FROM item_media WHERE item_id = ? AND status = 'approved' ORDER BY position ASC").all(item.id);
   item.media = media;
+  const pending = db.prepare("SELECT COUNT(*) AS c FROM item_media WHERE item_id = ? AND status = 'pending_review'").get(item.id);
+  item.pending_media_count = pending.c;
   return item;
+}
+
+// ---------- Image Moderation V1 ----------
+// Provider-agnostic by design: swap/add providers by extending moderateImage()'s branch below —
+// the upload flow that calls it never needs to change. MODERATION_PROVIDER unset (the default) is
+// the explicit "disabled/fallback-safe during beta" state: every image auto-approves exactly like
+// before this feature existed, zero behavior change until a real provider is configured. Every
+// other path (unknown provider, cap reached, network/API error) fails CLOSED to 'pending_review' —
+// this function must never let uncertainty result in an automatic public image.
+const MODERATION_PROVIDER = process.env.MODERATION_PROVIDER || '';
+// Sightengine's free tier is ~2000 checks/month; default cap leaves headroom rather than cutting
+// it exactly at the provider's own limit. Override via env var if a paid tier is ever added.
+const MODERATION_MONTHLY_LIMIT = parseInt(process.env.MODERATION_MONTHLY_LIMIT || '1800', 10);
+
+function currentMonthKey() {
+  const d = new Date();
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
+}
+function moderationUsageRemaining() {
+  const row = db.prepare('SELECT count FROM moderation_usage WHERE month_key = ?').get(currentMonthKey());
+  return MODERATION_MONTHLY_LIMIT - (row ? row.count : 0);
+}
+function incrementModerationUsage() {
+  db.prepare('INSERT INTO moderation_usage (month_key, count) VALUES (?, 1) ON CONFLICT(month_key) DO UPDATE SET count = count + 1').run(currentMonthKey());
+}
+
+// Returns { status: 'approved'|'pending_review', note }. Never throws.
+async function moderateImage(filePath, mimetype) {
+  if (!MODERATION_PROVIDER) return { status: 'approved', note: 'moderation disabled' };
+  if (moderationUsageRemaining() <= 0) return { status: 'pending_review', note: 'monthly moderation usage cap reached' };
+  try {
+    if (MODERATION_PROVIDER === 'sightengine') {
+      const result = await moderateWithSightengine(filePath);
+      incrementModerationUsage();
+      return result;
+    }
+    return { status: 'pending_review', note: `unknown MODERATION_PROVIDER "${MODERATION_PROVIDER}"` };
+  } catch (err) {
+    return { status: 'pending_review', note: 'moderation check failed — held for manual review' };
+  }
+}
+
+// Sightengine REST API (https://sightengine.com) — simple per-image POST, no cloud project setup.
+// Credentials come only from env vars, never hardcoded, and this function is only ever reached
+// when MODERATION_PROVIDER=sightengine is explicitly set.
+async function moderateWithSightengine(filePath) {
+  const apiUser = process.env.SIGHTENGINE_API_USER;
+  const apiSecret = process.env.SIGHTENGINE_API_SECRET;
+  if (!apiUser || !apiSecret) return { status: 'pending_review', note: 'Sightengine credentials not configured' };
+  const FormData = require('form-data');
+  const form = new FormData();
+  form.append('media', fs.createReadStream(filePath));
+  form.append('models', 'nudity-2.1,weapon,offensive');
+  form.append('api_user', apiUser);
+  form.append('api_secret', apiSecret);
+  const res = await fetch('https://api.sightengine.com/1.0/check.json', { method: 'POST', body: form });
+  const data = await res.json();
+  if (!res.ok || data.status !== 'success') return { status: 'pending_review', note: 'Sightengine API error' };
+  const nudity = data.nudity || {};
+  const unsafeScore = Math.max(nudity.sexual_activity || 0, nudity.sexual_display || 0, nudity.erotica || 0);
+  const weaponHit = data.weapon && data.weapon.classes && Object.values(data.weapon.classes).some(v => v > 0.5);
+  const offensiveHit = data.offensive && data.offensive.prob > 0.5;
+  if (unsafeScore > 0.5 || weaponHit || offensiveHit) return { status: 'pending_review', note: 'flagged by automated scan' };
+  return { status: 'approved', note: 'passed automated scan' };
+}
+
+// Moves a validated, moderated file from quarantine into the public uploads directory it will
+// actually be served from, and returns the public-facing filename to store as item_media.url.
+function publishFromQuarantine(quarantinePath) {
+  const filename = path.basename(quarantinePath);
+  fs.renameSync(quarantinePath, path.join(uploadDir, filename));
+  return '/uploads/' + filename;
 }
 
 // targetType/targetId tell the frontend what a click on this notification should open
@@ -631,7 +718,7 @@ app.get('/api/items/:id', optionalAuth, (req, res) => {
   res.json(isOwner || isAcceptedReceiver ? full : stripExactPickup(full));
 });
 
-app.post('/api/items', requireAuth, upload.array('media', MAX_UPLOAD_FILES), (req, res) => {
+app.post('/api/items', requireAuth, upload.array('media', MAX_UPLOAD_FILES), async (req, res) => {
   const { title, description, category, condition, price_type, price, exchange_for, rent_rate, rent_period, deposit, is_recurring, frequency, quantity, listing_type, pickup_available, pickup_type, pickup_area, pickup_address, pickup_instructions,
     available_until, is_urgent, food_pref, is_edible_food } = req.body;
   const files = req.files || [];
@@ -653,8 +740,19 @@ app.post('/api/items', requireAuth, upload.array('media', MAX_UPLOAD_FILES), (re
     return res.status(400).json({ error: 'Food available until (your pickup deadline) is required for food listings' });
   }
   const id = nanoid();
-  const media_url = files[0] ? '/uploads/' + files[0].filename : '';
-  const media_type = files[0] ? 'image' : ''; // only image/jpeg|png|webp can ever pass the filter above
+  // Image Moderation V1: every uploaded file goes through moderateImage(), not just the first —
+  // approved files move out of quarantine into the public uploads dir; anything else stays
+  // quarantined until an admin reviews it (see /api/admin/images/*). The item's cover photo
+  // (media_url/media_type on the items row) only ever points at an approved image.
+  const mediaResults = [];
+  for (const f of files) {
+    const decision = await moderateImage(f.path, f.mimetype);
+    const url = decision.status === 'approved' ? publishFromQuarantine(f.path) : '/uploads/' + f.filename;
+    mediaResults.push({ url, status: decision.status, note: decision.note });
+  }
+  const firstApproved = mediaResults.find(m => m.status === 'approved');
+  const media_url = firstApproved ? firstApproved.url : '';
+  const media_type = firstApproved ? 'image' : ''; // only image/jpeg|png|webp can ever pass the filter above
   db.prepare(`INSERT INTO items (id, user_id, title, description, category, condition, price_type, price, exchange_for, rent_rate, rent_period, deposit, media_url, media_type, is_recurring, frequency, quantity, listing_type, pickup_available, pickup_type, pickup_area, pickup_address, pickup_instructions, expires_at, available_until, is_urgent, food_pref, is_edible_food)
               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?, datetime('now', '+${LISTING_LIFETIME_DAYS} days'), ?,?,?,?)`)
     .run(id, req.user.id, title, description, category, condition || 'used', price_type || 'free',
@@ -670,9 +768,9 @@ app.post('/api/items', requireAuth, upload.array('media', MAX_UPLOAD_FILES), (re
       pickup_available === 'false' || pickup_available === '0' || pickup_available === false ? 0 : 1,
       sanitizePickupType(pickup_type), pickup_area || '', pickup_address || '', pickup_instructions || '',
       normalizedAvailableUntil, truthy(is_urgent) ? 1 : 0, sanitizeFoodPref(food_pref), edible && truthy(is_edible_food) ? 1 : 0);
-  files.forEach((f, i) => {
-    db.prepare('INSERT INTO item_media (id, item_id, url, media_type, position) VALUES (?,?,?,?,?)')
-      .run(nanoid(), id, '/uploads/' + f.filename, 'image', i);
+  mediaResults.forEach((m, i) => {
+    db.prepare("INSERT INTO item_media (id, item_id, url, media_type, position, status, moderation_note, moderated_at, moderated_by) VALUES (?,?,?,?,?,?,?, datetime('now'), 'auto')")
+      .run(nanoid(), id, m.url, 'image', i, m.status, m.note);
   });
   const item = db.prepare('SELECT * FROM items WHERE id = ?').get(id);
   res.json(attachMedia(item));
@@ -1411,6 +1509,58 @@ app.post('/api/admin/users/:id/unban', requireAuth, requireAdmin, (req, res) => 
   if (!target) return res.status(404).json({ error: 'Not found' });
   db.prepare("UPDATE users SET is_banned = 0, ban_reason = '' WHERE id = ?").run(req.params.id);
   logModeration(req.user.id, 'unban_user', 'user', req.params.id, '');
+  res.json({ ok: true });
+});
+
+// ---------- Image Moderation V1: admin review queue ----------
+app.get('/api/admin/images/pending', requireAuth, requireAdmin, (req, res) => {
+  const rows = db.prepare(`SELECT item_media.id, item_media.item_id, item_media.url, item_media.moderation_note, item_media.created_at,
+                                   items.title AS item_title, items.user_id AS owner_id, users.name AS owner_name
+                            FROM item_media
+                            JOIN items ON item_media.item_id = items.id
+                            JOIN users ON items.user_id = users.id
+                            WHERE item_media.status = 'pending_review'
+                            ORDER BY item_media.created_at ASC LIMIT 100`).all();
+  res.json(rows);
+});
+
+// Serves the actual quarantined image bytes — admin-only, never reachable by a public URL (the
+// file itself lives outside express.static's public uploads directory).
+app.get('/api/admin/images/:id/file', requireAuth, requireAdmin, (req, res) => {
+  const media = db.prepare("SELECT * FROM item_media WHERE id = ? AND status = 'pending_review'").get(req.params.id);
+  if (!media) return res.status(404).json({ error: 'Not found' });
+  const filePath = path.join(quarantineDir, path.basename(media.url));
+  if (!fs.existsSync(filePath)) return res.status(404).json({ error: 'File not found' });
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('Content-Security-Policy', "default-src 'none'; sandbox");
+  res.sendFile(filePath);
+});
+
+app.post('/api/admin/images/:id/approve', requireAuth, requireAdmin, (req, res) => {
+  const media = db.prepare("SELECT * FROM item_media WHERE id = ? AND status = 'pending_review'").get(req.params.id);
+  if (!media) return res.status(404).json({ error: 'Not found' });
+  const quarantinePath = path.join(quarantineDir, path.basename(media.url));
+  try { if (fs.existsSync(quarantinePath)) fs.renameSync(quarantinePath, path.join(uploadDir, path.basename(media.url))); } catch {}
+  db.prepare("UPDATE item_media SET status = 'approved', moderated_at = datetime('now'), moderated_by = ? WHERE id = ?").run(req.user.id, media.id);
+  // If the item didn't have a cover photo yet (its first image was the one pending), give it one now.
+  const item = db.prepare('SELECT * FROM items WHERE id = ?').get(media.item_id);
+  if (item && !item.media_url) {
+    db.prepare("UPDATE items SET media_url = ?, media_type = 'image' WHERE id = ?").run(media.url, item.id);
+  }
+  logModeration(req.user.id, 'approve_image', 'item', media.item_id, 'Approved image ' + media.id);
+  res.json({ ok: true });
+});
+
+app.post('/api/admin/images/:id/reject', requireAuth, requireAdmin, (req, res) => {
+  const media = db.prepare("SELECT * FROM item_media WHERE id = ? AND status = 'pending_review'").get(req.params.id);
+  if (!media) return res.status(404).json({ error: 'Not found' });
+  const quarantinePath = path.join(quarantineDir, path.basename(media.url));
+  try { if (fs.existsSync(quarantinePath)) fs.unlinkSync(quarantinePath); } catch {}
+  const item = db.prepare('SELECT * FROM items WHERE id = ?').get(media.item_id);
+  const note = String(req.body.note || '').slice(0, 300);
+  db.prepare('DELETE FROM item_media WHERE id = ?').run(media.id);
+  if (item) notify(item.user_id, 'image_rejected', `A photo on your listing "${item.title}" didn't pass review and was removed.${note ? ' Reason: ' + note : ''}`, item.id, 'item', item.id);
+  logModeration(req.user.id, 'reject_image', 'item', media.item_id, note || 'Rejected image ' + media.id);
   res.json({ ok: true });
 });
 
