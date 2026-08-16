@@ -349,6 +349,7 @@ const SERVICE_CATEGORIES = [
   'Delivery',
   'Cleaning',
   'Repairs',
+  'Assembly & Local Help',
   'Design',
   'Photography',
   'Pet Care',
@@ -783,7 +784,7 @@ app.get('/api/items-trending', (req, res) => {
                             FROM items JOIN users ON items.user_id = users.id
                             WHERE items.status != 'closed' AND items.request_count > 0 AND items.listing_type = ?
                             ORDER BY items.request_count DESC, items.created_at DESC
-                            LIMIT 6`).all(listing_type === 'business_waste' ? 'business_waste' : 'consumer').map(attachMedia).map(stripExactPickup);
+                            LIMIT 8`).all(listing_type === 'business_waste' ? 'business_waste' : 'consumer').map(attachMedia).map(stripExactPickup);
   res.json(rows);
 });
 

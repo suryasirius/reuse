@@ -10,7 +10,7 @@ const state = {
 };
 
 const SECTION_HINTS = {
-  consumer: "Post things you don't want, or find something free/paid/exchange/rent nearby.",
+  consumer: "Give. Find. Reuse. Give away things you no longer need, or find useful items near you.",
   business_waste: "Reusable surplus from businesses — office furniture, equipment, electronics, packaging and more — plus recurring byproducts like metal scrap, cow dung, and used cooking oil. Other businesses or farms can request them.",
   requests: "Post what you NEED instead of what you have — a thing or a service — and let nearby people fulfill it for free, rent, or payment."
 };
@@ -57,6 +57,7 @@ async function init() {
   bindTopBar();
   bindBottomNav();
   bindMoreMenu();
+  bindMobileMoreMenu();
   applySectionUi();
   loadEcoPanel();
   loadStatsStrip();
@@ -99,7 +100,7 @@ async function init() {
 function initHeroCarousel() {
   const titleEl = $('#sectionHint');
   const ctaBtn = $('#heroPostBtn');
-  if (titleEl) titleEl.textContent = SECTION_HINTS[state.section] || 'Search thousands of items, requests and services near you.';
+  if (titleEl) titleEl.textContent = SECTION_HINTS[state.section] || SECTION_HINTS.consumer;
   if (ctaBtn) ctaBtn.onclick = () => $('#postBtn').click();
 }
 
@@ -586,11 +587,20 @@ function bindBottomNav() {
     if (tab) tab.click();
     openPostModal();
   };
-  $('#sheetPostRequestBtn').onclick = () => {
+  $('#sheetPostItemRequestBtn').onclick = () => {
     closePostSheet();
     if (!state.user) return openAuthModal('login');
     const tab = document.querySelector('.section-tab[data-section="requests"]');
     if (tab) tab.click();
+    state.requestType = 'thing';
+    openPostRequestModal();
+  };
+  $('#sheetPostServiceRequestBtn').onclick = () => {
+    closePostSheet();
+    if (!state.user) return openAuthModal('login');
+    const tab = document.querySelector('.section-tab[data-section="requests"]');
+    if (tab) tab.click();
+    state.requestType = 'service';
     openPostRequestModal();
   };
   $('#sheetPostBusinessBtn').onclick = () => {
@@ -602,30 +612,87 @@ function bindBottomNav() {
   };
 }
 
+// ---------- More/Community menu content (shared by desktop dropdown + mobile bottom sheet) ----------
+// Every item here jumps to a section that already exists on the page, or opens an existing modal
+// (openImpactModal) — no new pages/content, no fake/placeholder items (no Saved Searches, no Help
+// Center — neither exists yet, so neither is listed).
+const MORE_MENU_GROUPS = [
+  { label: 'Discover', items: [
+    { key: 'categories', icon: 'layout-grid', label: 'Categories' },
+    { key: 'nearby', icon: 'map-pin', label: 'Nearby' },
+    { key: 'filters', icon: 'sliders-horizontal', label: 'Filters' }
+  ]},
+  { label: 'Community', items: [
+    { key: 'urgent', icon: 'heart-handshake', label: 'People asking for help' },
+    { key: 'champions', icon: 'trophy', label: 'Monthly Champions' },
+    { key: 'impact', icon: 'bar-chart-3', label: 'Impact Tracker' },
+    { key: 'community', icon: 'users', label: 'Community Stats' }
+  ]},
+  { label: 'Business', items: [
+    { key: 'business', icon: 'building-2', label: 'Business Surplus', badge: true }
+  ]},
+  { label: 'Safety & Info', items: [
+    { key: 'trust', icon: 'shield-check', label: 'Trust & Safety' },
+    { key: 'about', icon: 'info', label: 'About ReUse Hub' }
+  ]}
+];
+function moreMenuItemsHtml() {
+  return MORE_MENU_GROUPS.map(g => `
+    <div class="more-menu-group">
+      <div class="more-menu-group-label">${escapeHtml(g.label)}</div>
+      ${g.items.map(it => `<button type="button" role="menuitem" data-more="${it.key}"><i data-lucide="${it.icon}"></i> ${escapeHtml(it.label)}${it.badge ? ' <span class="new-badge">NEW</span>' : ''}</button>`).join('')}
+    </div>
+  `).join('');
+}
+const scrollToSel = (sel) => { const el = document.querySelector(sel); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' }); };
+const MORE_ACTIONS = {
+  categories: () => scrollToSel('.page-layout'),
+  business: () => { const tab = document.querySelector('.section-tab[data-section="business_waste"]'); if (tab) tab.click(); window.scrollTo({ top: 0, behavior: 'smooth' }); },
+  nearby: () => scrollToSel('#nearbySection'),
+  filters: () => { scrollToSel('.hero-banner'); const panel = $('#filtersPanel'); if (panel) panel.style.display = 'flex'; },
+  urgent: () => scrollToSel('#urgentSection'),
+  champions: () => scrollToSel('#championsSection'),
+  impact: () => openImpactModal(),
+  community: () => scrollToSel('#communitySection'),
+  trust: () => scrollToSel('.trust-strip'),
+  about: () => scrollToSel('footer')
+};
+
 // ---------- desktop More/Community menu (nav redesign Stage 4) ----------
-// Every item here jumps to a section that already exists on the page, or opens an existing
-// modal (openImpactModal) — no new pages/content, no duplicated markup. Hidden on mobile via CSS.
 function bindMoreMenu() {
   const wrap = $('#moreMenuWrap');
   if (!wrap) return;
+  const btn = $('#moreMenuBtn');
   const dropdown = $('#moreMenuDropdown');
-  const scrollTo = (sel) => { const el = document.querySelector(sel); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' }); };
-  const MORE_ACTIONS = {
-    categories: () => scrollTo('.page-layout'),
-    business: () => { const tab = document.querySelector('.section-tab[data-section="business_waste"]'); if (tab) tab.click(); window.scrollTo({ top: 0, behavior: 'smooth' }); },
-    nearby: () => scrollTo('#nearbySection'),
-    filters: () => { scrollTo('.hero-banner'); const panel = $('#filtersPanel'); if (panel) panel.style.display = 'flex'; },
-    champions: () => scrollTo('#championsSection'),
-    impact: () => openImpactModal(),
-    community: () => scrollTo('#communitySection'),
-    trust: () => scrollTo('.trust-strip'),
-    about: () => scrollTo('footer')
-  };
-  $('#moreMenuBtn').onclick = (e) => { e.stopPropagation(); dropdown.classList.toggle('open'); };
-  document.addEventListener('click', (e) => { if (!e.target.closest('#moreMenuWrap')) dropdown.classList.remove('open'); });
-  dropdown.querySelectorAll('[data-more]').forEach(btn => {
-    btn.onclick = () => { const fn = MORE_ACTIONS[btn.dataset.more]; if (fn) fn(); dropdown.classList.remove('open'); };
+  dropdown.innerHTML = moreMenuItemsHtml();
+  const closeDropdown = () => { dropdown.classList.remove('open'); btn.setAttribute('aria-expanded', 'false'); };
+  const openDropdown = () => { dropdown.classList.add('open'); btn.setAttribute('aria-expanded', 'true'); };
+  btn.onclick = (e) => { e.stopPropagation(); dropdown.classList.contains('open') ? closeDropdown() : openDropdown(); };
+  document.addEventListener('click', (e) => { if (!e.target.closest('#moreMenuWrap')) closeDropdown(); });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && dropdown.classList.contains('open')) { closeDropdown(); btn.focus(); } });
+  dropdown.querySelectorAll('[data-more]').forEach(item => {
+    item.onclick = () => { const fn = MORE_ACTIONS[item.dataset.more]; if (fn) fn(); closeDropdown(); };
   });
+  if (window.lucide) lucide.createIcons();
+}
+
+// ---------- mobile combined More menu (one bottom sheet, same content as the desktop dropdown —
+// no separate/duplicate drawers) ----------
+function bindMobileMoreMenu() {
+  const openBtn = $('#mobileMoreBtn');
+  const overlay = $('#mobileMoreSheetOverlay');
+  const list = $('#mobileMoreList');
+  if (!openBtn || !overlay || !list) return;
+  list.innerHTML = moreMenuItemsHtml();
+  const close = () => { overlay.style.display = 'none'; };
+  const open = () => { overlay.style.display = 'flex'; };
+  openBtn.onclick = () => open();
+  overlay.onclick = (e) => { if (e.target.id === 'mobileMoreSheetOverlay') close(); };
+  $('#mobileMoreCancelBtn').onclick = () => close();
+  list.querySelectorAll('[data-more]').forEach(item => {
+    item.onclick = () => { const fn = MORE_ACTIONS[item.dataset.more]; if (fn) fn(); close(); };
+  });
+  if (window.lucide) lucide.createIcons();
 }
 
 function renderVerifyBanner() {
@@ -633,7 +700,7 @@ function renderVerifyBanner() {
   if (!el) return;
   if (!state.user || state.user.is_verified) { el.innerHTML = ''; return; }
   el.innerHTML = `<div class="verify-banner">
-    <span>✅ Verify your account to earn a Verified badge and build trust with other users.</span>
+    <span>✅ Get verified to build trust.</span>
     <button id="startVerifyBtn">Verify now</button>
   </div>`;
   $('#startVerifyBtn').onclick = () => openVerifyModal();
@@ -999,7 +1066,7 @@ function requestBadgeHtml(r) {
   if (r.budget_type === 'paid') label = 'Will pay ₹' + r.budget_amount;
   else if (r.budget_type === 'exchange') label = 'Will exchange';
   else label = 'FREE HELP OK';
-  let b = `<span class="badge ${r.budget_type}">${label}</span> <span class="badge ${r.request_type}">${r.request_type === 'service' ? 'Service' : 'Thing'}</span>`;
+  let b = `<span class="badge ${r.budget_type}">${label}</span> <span class="badge ${r.request_type}">${r.request_type === 'service' ? '🔧 Service' : '📦 Item'}</span>`;
   if (r.is_urgent) b += ` <span class="badge urgent">Urgent</span>`;
   if (r.status === 'fulfilled') b += ` <span class="badge claimed">fulfilled</span>`;
   return b;
@@ -1130,7 +1197,7 @@ function cardHtml(item) {
     </div>
     <div class="body">
       <h3>${escapeHtml(item.title)}</h3>
-      <div class="meta">${ownerNameHtml(item.owner_name, item.owner_verified, item.user_id)} • ${escapeHtml(displayCategory(item.category))}</div>
+      <div class="meta">${ownerNameHtml(item.owner_name, item.owner_verified, item.user_id)} • ${escapeHtml(displayCategory(item.category))} • ${timeAgo(item.created_at)}</div>
       ${item.available_until ? `<div class="food-until-hint">🕐 Available until ${escapeHtml(formatAvailableUntil(item.available_until))}</div>` : ''}
       <div class="footer-bar">
         <span class="loc">${LOC_SVG}${escapeHtml(item.owner_location || 'Nearby')}</span>

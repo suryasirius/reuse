@@ -26,19 +26,13 @@
            sections that already exist on this same page, plus the existing Impact modal. No new
            pages/content, hidden on mobile (bottom nav + Profile sheet covers that there). -->
       <div class="more-menu-wrap" id="moreMenuWrap">
-        <button type="button" class="ghost more-menu-btn" id="moreMenuBtn">More <i data-lucide="chevron-down"></i></button>
-        <div class="more-menu-dropdown" id="moreMenuDropdown">
-          <button type="button" data-more="categories"><i data-lucide="layout-grid"></i> Categories</button>
-          <button type="button" data-more="business"><i data-lucide="building-2"></i> Business Surplus <span class="new-badge">NEW</span></button>
-          <button type="button" data-more="nearby"><i data-lucide="map-pin"></i> Nearby</button>
-          <button type="button" data-more="filters"><i data-lucide="sliders-horizontal"></i> Filters</button>
-          <button type="button" data-more="champions"><i data-lucide="trophy"></i> Monthly Champions</button>
-          <button type="button" data-more="impact"><i data-lucide="bar-chart-3"></i> Impact Tracker</button>
-          <button type="button" data-more="community"><i data-lucide="users"></i> Community Stats</button>
-          <button type="button" data-more="trust"><i data-lucide="shield-check"></i> Trust &amp; Safety</button>
-          <button type="button" data-more="about"><i data-lucide="info"></i> About ReUse Hub</button>
-        </div>
+        <button type="button" class="ghost more-menu-btn" id="moreMenuBtn" aria-haspopup="true" aria-expanded="false">More <i data-lucide="chevron-down"></i></button>
+        <div class="more-menu-dropdown" id="moreMenuDropdown" role="menu"></div>
       </div>
+      <!-- Mobile-only More trigger: the desktop dropdown above is hidden on mobile, this opens the
+           same grouped menu content as a bottom sheet instead (one combined mobile menu, see
+           #mobileMoreSheetOverlay near the Post action sheet below). -->
+      <button type="button" class="ghost mobile-more-btn mobile-only-section" id="mobileMoreBtn" aria-label="More"><i data-lucide="menu"></i></button>
       <button class="primary-btn" id="postBtn"><i data-lucide="plus"></i> Post item</button>
       <nav id="nav"></nav>
     </div>
@@ -59,7 +53,7 @@
 
   <div class="hero-banner hero-banner-compact">
     <div class="hero-compact-row">
-      <span class="hero-compact-title" id="sectionHint">Search thousands of items, requests and services near you.</span>
+      <span class="hero-compact-title" id="sectionHint">Give. Find. Reuse. Give away things you no longer need, or find useful items near you.</span>
       <button class="hero-cta hero-cta-compact" id="heroPostBtn"><span class="hero-cta-label">Post an item</span> <i data-lucide="arrow-up-right"></i></button>
     </div>
     <div class="hero-search-wrap">
@@ -114,8 +108,8 @@
   <div id="urgentSection" class="homepage-section"></div>
   <div id="urgentFoodSection" class="homepage-section"></div>
   <div class="req-type-tabs" id="reqTypeTabs" style="display:none">
-    <button class="chip active" data-rt="thing">Things I need</button>
-    <button class="chip" data-rt="service">Services I need</button>
+    <button class="chip active" data-rt="thing">📦 Item requests</button>
+    <button class="chip" data-rt="service">🔧 Service requests</button>
   </div>
 
   <section class="champions-section" id="championsSection"></section>
@@ -236,17 +230,33 @@
     <h3>What would you like to post?</h3>
     <button type="button" class="action-sheet-option primary" id="sheetPostItemBtn">
       <span class="action-sheet-icon give">🟢</span>
-      <span class="action-sheet-text"><strong>Give something away</strong><small>Post an item</small></span>
+      <span class="action-sheet-text"><strong>Give / Exchange an item</strong><small>Post an item</small></span>
     </button>
-    <button type="button" class="action-sheet-option" id="sheetPostRequestBtn">
-      <span class="action-sheet-icon ask">🔵</span>
-      <span class="action-sheet-text"><strong>Ask for something</strong><small>Post a request</small></span>
+    <button type="button" class="action-sheet-option" id="sheetPostItemRequestBtn">
+      <span class="action-sheet-icon ask">📦</span>
+      <span class="action-sheet-text"><strong>Ask for an item</strong><small>Post an item request</small></span>
+    </button>
+    <button type="button" class="action-sheet-option" id="sheetPostServiceRequestBtn">
+      <span class="action-sheet-icon ask">🔧</span>
+      <span class="action-sheet-text"><strong>Ask for local help/service</strong><small>Electrician, plumber, carpenter…</small></span>
     </button>
     <button type="button" class="action-sheet-option secondary" id="sheetPostBusinessBtn">
       <span class="action-sheet-icon biz">🟠</span>
       <span class="action-sheet-text"><strong>Business surplus</strong><small>For businesses</small></span>
     </button>
     <button type="button" class="action-sheet-cancel" id="sheetCancelBtn">Cancel</button>
+  </div>
+</div>
+
+<!-- Mobile combined More menu (nav redesign — closes the "deferred mobile More menu" gap): same
+     grouped content as the desktop dropdown, rendered as a bottom sheet instead. Populated by
+     moreMenuItemsHtml() in app.js so the two never drift apart. -->
+<div class="action-sheet-overlay" id="mobileMoreSheetOverlay" style="display:none">
+  <div class="action-sheet mobile-more-sheet" id="mobileMoreSheet">
+    <div class="action-sheet-handle"></div>
+    <h3>More</h3>
+    <div class="more-menu-list" id="mobileMoreList"></div>
+    <button type="button" class="action-sheet-cancel" id="mobileMoreCancelBtn">Close</button>
   </div>
 </div>
 
