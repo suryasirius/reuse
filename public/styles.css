@@ -1333,9 +1333,7 @@ html,body{overflow-x:hidden;max-width:100%}
   .sidebar,.main-col{display:none}
   body.view-browse .sidebar,body.view-browse .main-col{display:block}
   body.view-browse #nearbySection,
-  body.view-browse .hero-slides,
-  body.view-browse .hero-cta-compact,
-  body.view-browse .hero-footer,
+  body.view-browse .hero-compact-row,
   body.view-browse #statsStrip,
   body.view-browse #trendingSection,
   body.view-browse #urgentSection,
@@ -1348,6 +1346,5 @@ html,body{overflow-x:hidden;max-width:100%}
   body.view-browse #businessTeaserSection,
   body.view-browse #collectionsSection,
   body.view-browse .trust-strip{display:none}
-  body.view-browse .hero-banner{padding:14px 16px;margin-bottom:0}
-  body.view-browse .hero-flex{display:block}
+  body.view-browse .hero-banner-compact{padding:10px 14px;margin-bottom:0;gap:0}
 }

@@ -91,71 +91,16 @@ async function init() {
   if (window.lucide) lucide.createIcons();
 }
 
-// ---------- hero carousel: 4 slides, auto-advance + arrows + dots + hover-pause + swipe ----------
-// Each slide's primary CTA (label + action) is defined here rather than hardcoded per-slide in
-// HTML, since the button itself is shared/reused across slides (not duplicated in the DOM).
-const HERO_SLIDE_META = [
-  { cta: 'Post an item', action: () => $('#postBtn').click() },
-  { cta: 'Post surplus food', action: () => $('#postBtn').click() },
-  { cta: 'Explore business reuse', action: () => { const tab = document.querySelector('.section-tab[data-section="business_waste"]'); if (tab) tab.click(); } },
-  { cta: 'Explore nearby', action: () => { const btn = $('#nearbyCtaBtn'); if (btn) btn.click(); } }
-];
-
+// ---------- hero: static single-line search prompt + Post button (homepage restructure v2) ----------
+// No rotation, no per-slide marketing copy — a user landing on the page should read this as
+// "search bar", not as a rotating ad for Business Surplus/food/nearby. Business Surplus keeps its
+// own visibility via the top-nav tab, the More menu, and its dedicated CTA card further down the
+// page (never removed, just no longer sharing the hero banner).
 function initHeroCarousel() {
-  const slidesWrap = $('#heroSlides');
-  if (!slidesWrap) return;
-  const slides = Array.from(slidesWrap.querySelectorAll('.hero-slide'));
-  const dots = Array.from(document.querySelectorAll('#heroDots .hero-dot'));
+  const titleEl = $('#sectionHint');
   const ctaBtn = $('#heroPostBtn');
-  const ctaLabel = ctaBtn ? ctaBtn.querySelector('.hero-cta-label') : null;
-  const prevBtn = $('#heroPrevBtn');
-  const nextBtn = $('#heroNextBtn');
-  const heroBanner = document.querySelector('.hero-banner');
-  if (!slides.length) return;
-
-  const AUTO_MS = 5500;
-  let current = 0;
-  let timer = null;
-
-  function render() {
-    slides.forEach((s, i) => s.classList.toggle('active', i === current));
-    dots.forEach((d, i) => d.classList.toggle('active', i === current));
-    const meta = HERO_SLIDE_META[current];
-    if (ctaLabel && meta) ctaLabel.textContent = meta.cta;
-  }
-  function goTo(i) { current = (i + slides.length) % slides.length; render(); }
-  function next() { goTo(current + 1); }
-  function prev() { goTo(current - 1); }
-  function stopAuto() { if (timer) clearInterval(timer); timer = null; }
-  function startAuto() { stopAuto(); timer = setInterval(next, AUTO_MS); }
-  function restartAuto() { startAuto(); }
-
-  if (prevBtn) prevBtn.onclick = () => { prev(); restartAuto(); };
-  if (nextBtn) nextBtn.onclick = () => { next(); restartAuto(); };
-  dots.forEach((d, i) => d.onclick = () => { goTo(i); restartAuto(); });
-  if (ctaBtn) ctaBtn.onclick = () => {
-    const meta = HERO_SLIDE_META[current];
-    if (meta && meta.action) meta.action();
-  };
-
-  if (heroBanner) {
-    heroBanner.addEventListener('mouseenter', stopAuto);
-    heroBanner.addEventListener('mouseleave', startAuto);
-
-    let touchStartX = null;
-    heroBanner.addEventListener('touchstart', (e) => {
-      touchStartX = e.touches[0].clientX;
-    }, { passive: true });
-    heroBanner.addEventListener('touchend', (e) => {
-      if (touchStartX == null) return;
-      const dx = e.changedTouches[0].clientX - touchStartX;
-      if (Math.abs(dx) > 40) { dx < 0 ? next() : prev(); restartAuto(); }
-      touchStartX = null;
-    }, { passive: true });
-  }
-
-  render();
-  startAuto();
+  if (titleEl) titleEl.textContent = SECTION_HINTS[state.section] || 'Search thousands of items, requests and services near you.';
+  if (ctaBtn) ctaBtn.onclick = () => $('#postBtn').click();
 }
 
 const SEARCH_EXAMPLES = ['laptops', 'books', 'furniture', 'tools', 'a study table', 'kitchen appliances', 'school bags'];

@@ -344,6 +344,7 @@ const HOME_HIGHLIGHT_GROUPS = [
 const SERVICE_CATEGORIES = [
   'Electrician',
   'Plumber',
+  'Carpenter',
   'Tutor',
   'Delivery',
   'Cleaning',
