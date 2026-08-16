@@ -47,101 +47,57 @@
 <main>
   <div id="verifyBanner"></div>
 
-  <section class="nearby-activity nearby-activity-tight" id="nearbySection">
-    <div class="nearby-map" aria-hidden="true">
-      <div class="nearby-map-bg"></div>
-      <div class="nearby-road r1"></div>
-      <div class="nearby-road r2"></div>
-      <div class="nearby-pin"><i data-lucide="map-pin"></i></div>
-      <div class="nearby-orbit o1" title="Food Rescue">🍲</div>
-      <div class="nearby-orbit o2" title="Community help">🤝</div>
-      <div class="nearby-orbit o3" title="Items">🪑</div>
-      <div class="nearby-orbit o4" title="Business surplus">📦</div>
-    </div>
-    <div class="nearby-content">
-      <h2 class="nearby-title"><i data-lucide="map-pin"></i> See what's happening near you</h2>
-      <p class="nearby-sub">People are giving, finding and helping in your area. Explore the latest items and requests nearby.</p>
-      <div class="nearby-counts" id="nearbyCounts"></div>
-      <div class="nearby-recent" id="nearbyRecent"></div>
-      <div class="nearby-actions">
-        <button class="nearby-cta" id="nearbyCtaBtn"><i data-lucide="map-pin"></i> Explore nearby</button>
-        <button class="nearby-impact-link" id="impactStripBtn">📊 See our impact</button>
-      </div>
+  <section class="nearby-strip" id="nearbySection">
+    <span class="nearby-strip-icon"><i data-lucide="map-pin"></i></span>
+    <div class="nearby-counts" id="nearbyCounts"></div>
+    <div class="nearby-recent" id="nearbyRecent"></div>
+    <div class="nearby-strip-actions">
+      <button class="nearby-cta" id="nearbyCtaBtn">Explore nearby</button>
+      <button class="nearby-impact-link" id="impactStripBtn">📊 Impact</button>
     </div>
   </section>
 
-  <div class="hero-banner">
-    <div class="hero-glow"></div>
-    <div class="hero-particle p1" aria-hidden="true"></div>
-    <div class="hero-particle p2" aria-hidden="true"></div>
-    <div class="hero-particle p3" aria-hidden="true"></div>
-    <div class="hero-particle p4" aria-hidden="true"></div>
-    <div class="hero-flex">
-      <div class="hero-left">
-        <span class="hero-badge"><i data-lucide="sparkles"></i> ReUse Community 2.0</span>
-        <div class="hero-slides" id="heroSlides">
-          <div class="hero-slide active" data-slide="0">
-            <h1 class="hero-title">Reduce waste.<br>Build community.<br>Reuse better.</h1>
-            <p class="section-hint hero-hint" id="sectionHint">Post things you don't want, or find something free/paid/exchange/rent nearby.</p>
-            <p class="hero-quote">"One man's trash is another man's treasure."</p>
-          </div>
-          <div class="hero-slide" data-slide="1">
-            <h1 class="hero-title">Good food shouldn't<br>go to waste.</h1>
-            <p class="hero-hint">Restaurants, weddings and events can quickly share surplus food with people nearby.</p>
-          </div>
-          <div class="hero-slide" data-slide="2">
-            <h1 class="hero-title">Businesses have<br>surplus too.</h1>
-            <p class="hero-hint">Give equipment, materials and reusable goods another life.</p>
-          </div>
-          <div class="hero-slide" data-slide="3">
-            <h1 class="hero-title">See what's happening<br>near you.</h1>
-            <p class="hero-hint">Find items, requests and people helping in your area.</p>
-          </div>
-        </div>
-        <div class="hero-search-wrap">
-          <div class="searchbar">
-            <i data-lucide="search" class="searchbar-icon"></i>
-            <input id="search" placeholder="Search laptops, books, furniture, tools...">
-            <input id="locationFilter" placeholder="📍 Filter by area/city..." style="max-width:200px">
-            <select id="priceFilter">
-              <option value="">All offer types</option>
-              <option value="free">Free</option>
-              <option value="paid">Paid</option>
-              <option value="exchange">Exchange</option>
-              <option value="rent">Rent</option>
-            </select>
-            <button class="filters-btn" type="button" id="filtersBtn"><i data-lucide="sliders-horizontal"></i> Filters</button>
-          </div>
-          <div class="filters-panel" id="filtersPanel" style="display:none">
-            <label class="urgent-check"><input type="checkbox" id="filterUrgent"> 🔥 Urgent only</label>
-            <label class="filters-sort-label">Sort:
-              <select id="filterSort">
-                <option value="newest">Newest</option>
-                <option value="urgent">Urgent first</option>
-                <option value="price_low">Price: Low → High</option>
-              </select>
-            </label>
-          </div>
-        </div>
+  <div class="hero-banner hero-banner-compact">
+    <div class="hero-compact-row">
+      <div class="hero-slides" id="heroSlides">
+        <div class="hero-slide active" data-slide="0"><span class="hero-compact-title" id="sectionHint">Reduce waste. Build community. Reuse better.</span></div>
+        <div class="hero-slide" data-slide="1"><span class="hero-compact-title">Good food shouldn't go to waste.</span></div>
+        <div class="hero-slide" data-slide="2"><span class="hero-compact-title">Businesses have surplus too.</span></div>
+        <div class="hero-slide" data-slide="3"><span class="hero-compact-title">See what's happening near you.</span></div>
       </div>
-      <div class="hero-visual" aria-hidden="true">
-        <div class="hero-visual-blob"></div>
-        <div class="hero-visual-card c1">🪑</div>
-        <div class="hero-visual-card c2">🌱</div>
-        <div class="hero-visual-card c3">📦</div>
+      <button class="hero-cta hero-cta-compact" id="heroPostBtn"><span class="hero-cta-label">Post an item</span> <i data-lucide="arrow-up-right"></i></button>
+    </div>
+    <div class="hero-search-wrap">
+      <div class="searchbar">
+        <i data-lucide="search" class="searchbar-icon"></i>
+        <input id="search" placeholder="Search laptops, books, furniture, tools...">
+        <input id="locationFilter" placeholder="📍 Filter by area/city..." style="max-width:200px">
+        <select id="priceFilter">
+          <option value="">All offer types</option>
+          <option value="free">Free</option>
+          <option value="paid">Paid</option>
+          <option value="exchange">Exchange</option>
+          <option value="rent">Rent</option>
+        </select>
+        <button class="filters-btn" type="button" id="filtersBtn"><i data-lucide="sliders-horizontal"></i> Filters</button>
+      </div>
+      <div class="filters-panel" id="filtersPanel" style="display:none">
+        <label class="urgent-check"><input type="checkbox" id="filterUrgent"> 🔥 Urgent only</label>
+        <label class="filters-sort-label">Sort:
+          <select id="filterSort">
+            <option value="newest">Newest</option>
+            <option value="urgent">Urgent first</option>
+            <option value="price_low">Price: Low → High</option>
+          </select>
+        </label>
       </div>
     </div>
-    <div class="hero-footer">
-      <button class="hero-cta" id="heroPostBtn"><span class="hero-cta-label">Post an item</span> <i data-lucide="arrow-up-right"></i></button>
-      <div class="hero-carousel-controls">
-        <button type="button" class="hero-arrow" id="heroPrevBtn" aria-label="Previous slide"><i data-lucide="chevron-left"></i></button>
-        <div class="hero-dots" id="heroDots">
-          <button type="button" class="hero-dot active" data-slide="0" aria-label="Show slide 1"></button>
-          <button type="button" class="hero-dot" data-slide="1" aria-label="Show slide 2"></button>
-          <button type="button" class="hero-dot" data-slide="2" aria-label="Show slide 3"></button>
-          <button type="button" class="hero-dot" data-slide="3" aria-label="Show slide 4"></button>
-        </div>
-        <button type="button" class="hero-arrow" id="heroNextBtn" aria-label="Next slide"><i data-lucide="chevron-right"></i></button>
+    <div class="hero-footer hero-footer-compact">
+      <div class="hero-dots" id="heroDots">
+        <button type="button" class="hero-dot active" data-slide="0" aria-label="Show slide 1"></button>
+        <button type="button" class="hero-dot" data-slide="1" aria-label="Show slide 2"></button>
+        <button type="button" class="hero-dot" data-slide="2" aria-label="Show slide 3"></button>
+        <button type="button" class="hero-dot" data-slide="3" aria-label="Show slide 4"></button>
       </div>
     </div>
   </div>

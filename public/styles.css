@@ -93,6 +93,7 @@ header .logo{
 .quick-cat-icon [data-lucide]{width:22px;height:22px}
 .quick-cat-btn:hover .quick-cat-icon{transform:translateY(-2px) scale(1.05)}
 .quick-cat-label{font-size:11px;font-weight:700;color:var(--text);text-align:center;line-height:1.25}
+.quick-cat-icon-more{background:var(--brand-softer) !important;color:var(--brand)}
 @media (max-width:600px){
   .quick-categories-row{gap:14px;padding:4px 2px 14px}
   .quick-cat-btn{width:60px}
@@ -275,6 +276,21 @@ main{max-width:1800px;width:calc(100vw - 64px);margin:0 auto;padding:14px 12px 6
 .hero-cta:hover{transform:translateY(-1px) scale(1.03);box-shadow:0 12px 28px rgba(184,232,78,.5)}
 .hero-cta [data-lucide]{width:16px;height:16px}
 .hero-dots{display:flex;gap:5px;align-items:center}
+
+/* ---------- compact hero (homepage restructure v2: search+filters only, no marketing
+   carousel/particles/visual blob) — keeps the same #heroSlides/#heroDots/#heroPostBtn ids so
+   initHeroCarousel() in app.js still works unchanged, just renders far less chrome. ---------- */
+.hero-banner-compact{
+  min-height:0;padding:16px 20px;border-radius:20px;margin-bottom:16px;
+  display:flex;flex-direction:column;gap:12px;
+}
+.hero-compact-row{display:flex;align-items:center;justify-content:space-between;gap:16px}
+.hero-slides{position:relative;min-height:0;flex:1;min-width:0}
+.hero-slide{position:absolute;inset:0;opacity:0;visibility:hidden;transition:opacity .35s}
+.hero-slide.active{position:relative;opacity:1;visibility:visible}
+.hero-compact-title{font-size:15px;font-weight:700;line-height:1.3;color:#fff}
+.hero-cta-compact{height:38px;padding:0 16px;font-size:12.5px;flex-shrink:0}
+.hero-footer-compact{padding-top:0;border-top:none;margin-top:0;justify-content:center}
 
 /* ---------- statistics strip ---------- */
 .stats-strip{
@@ -825,8 +841,7 @@ footer{color:var(--muted);font-size:13px;padding:0;border-top:1px solid var(--bo
   header{padding:0 16px}
   .diff-strip{padding:8px 16px}
   main{padding:18px 14px 50px}
-  .hero-banner{padding:24px 20px}
-  .hero-title{font-size:26px}
+  .hero-banner-compact{padding:12px 16px}
   .grid{grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px}
 }
 
@@ -847,18 +862,10 @@ html,body{overflow-x:hidden;max-width:100%}
   header.scrolled .section-tabs{max-height:0;opacity:0;overflow:hidden;margin:0;pointer-events:none}
 
   /* compact hero, no desktop redesign */
-  .hero-banner{padding:20px 16px}
-  .hero-title{font-size:22px;margin:0 0 8px}
-  .hero-hint{font-size:13px;margin:0 0 14px}
-  .hero-badge{font-size:11px;padding:5px 10px}
-  .hero-particle{display:none}
-  .hero-visual{display:none}
-  .hero-footer{margin-top:12px;padding-top:12px}
-  .hero-cta{height:44px;padding:0 16px;font-size:13px}
-  .hero-slides{min-height:138px}
-  .hero-arrow{width:26px;height:26px}
-  .hero-arrow svg, .hero-arrow [data-lucide]{width:13px;height:13px}
-  .hero-carousel-controls{gap:6px}
+  .hero-banner-compact{padding:12px 16px;gap:8px}
+  .hero-compact-title{font-size:13px}
+  .hero-cta-compact{height:38px;padding:0 12px;font-size:12px}
+  .hero-footer-compact{margin-top:0}
   .hero-dot{width:5px;height:5px}
   .hero-dot.active{width:16px}
 
@@ -930,93 +937,44 @@ html,body{overflow-x:hidden;max-width:100%}
   #postBtn{order:4}
 }
 
-/* ---------- Nearby Activity section (replaces old diff-strip) ---------- */
-.nearby-activity{
-  display:flex;gap:20px;align-items:stretch;
-  background:var(--card);border:1px solid var(--border-soft);border-radius:var(--radius-lg);
-  box-shadow:var(--shadow-sm);padding:14px 20px;margin-bottom:18px;
-  min-height:112px;
+/* ---------- Nearby strip (homepage restructure v2: single compact row, no map graphic) ---------- */
+.nearby-strip{
+  display:flex;align-items:center;gap:16px;flex-wrap:wrap;
+  background:var(--card);border:1px solid var(--border-soft);border-radius:var(--radius-full);
+  box-shadow:var(--shadow-sm);padding:9px 18px;margin-bottom:14px;
 }
-/* Tight placement: nearby leads the page (before the hero), so it's kept — same content,
-   same map, same buttons — just ~28% shorter vertically so it doesn't eat the first
-   viewport. Unlike the old .nearby-activity-compact, the subtitle stays visible. */
-.nearby-activity-tight{
-  padding:10px 18px;min-height:80px;margin-bottom:20px;
+.nearby-strip-icon{
+  width:26px;height:26px;border-radius:50%;background:var(--brand-softer);color:var(--brand);
+  display:flex;align-items:center;justify-content:center;flex-shrink:0;
 }
-.nearby-activity-tight .nearby-map{width:145px}
-.nearby-activity-tight .nearby-content{gap:5px}
-.nearby-map{
-  position:relative;flex-shrink:0;width:170px;border-radius:var(--radius-md);overflow:hidden;
-  background:linear-gradient(160deg,var(--brand-softer),#eef4f0);
-}
-.nearby-map-bg{
-  position:absolute;inset:0;
-  background-image:
-    linear-gradient(90deg, rgba(23,138,75,.08) 1px, transparent 1px),
-    linear-gradient(0deg, rgba(23,138,75,.08) 1px, transparent 1px);
-  background-size:28px 28px;
-}
-.nearby-road{position:absolute;background:rgba(255,255,255,.7);border-radius:99px}
-.nearby-road.r1{width:150%;height:10px;top:38%;left:-20%;transform:rotate(-8deg)}
-.nearby-road.r2{width:120%;height:8px;top:65%;left:-10%;transform:rotate(6deg)}
-.nearby-pin{
-  position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
-  width:44px;height:44px;border-radius:50%;background:var(--brand);color:#fff;
-  display:flex;align-items:center;justify-content:center;box-shadow:0 8px 18px rgba(23,138,75,.35);
-  z-index:2;
-}
-.nearby-pin [data-lucide]{width:22px;height:22px}
-.nearby-orbit{
-  position:absolute;width:32px;height:32px;border-radius:50%;background:#fff;
-  display:flex;align-items:center;justify-content:center;font-size:15px;
-  box-shadow:var(--shadow-sm);z-index:1;
-}
-.nearby-orbit.o1{top:18%;left:22%}
-.nearby-orbit.o2{top:20%;right:18%}
-.nearby-orbit.o3{bottom:16%;left:16%}
-.nearby-orbit.o4{bottom:20%;right:20%}
-
-.nearby-content{flex:1;min-width:0;display:flex;flex-direction:column;justify-content:center;gap:8px}
-.nearby-title{
-  display:flex;align-items:center;gap:8px;margin:0;font-size:19px;font-weight:800;color:var(--text);
-  font-family:var(--font-display);
-}
-.nearby-title [data-lucide]{width:18px;height:18px;color:var(--brand)}
-.nearby-sub{margin:0;color:var(--muted);font-size:13.5px;line-height:1.5;max-width:56ch}
-.nearby-counts{display:flex;gap:18px;margin-top:2px}
-.nearby-count{font-size:13px;color:var(--text)}
-.nearby-count strong{color:var(--brand-dark);font-family:var(--font-display);font-size:15px;margin-right:3px}
-.nearby-recent{display:flex;flex-direction:column;gap:4px;margin-top:2px}
-.nearby-row{display:flex;align-items:center;gap:8px;padding:4px 0;cursor:pointer;border-radius:8px;transition:background .12s}
-.nearby-row:hover{background:var(--brand-softer)}
-.nearby-row-icon{font-size:15px;flex-shrink:0}
-.nearby-row-text{display:flex;flex-direction:column;min-width:0}
-.nearby-row-title{font-size:12.5px;font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.nearby-strip-icon [data-lucide]{width:14px;height:14px}
+.nearby-counts{display:flex;gap:16px;flex-shrink:0}
+.nearby-count{font-size:12.5px;color:var(--text)}
+.nearby-count strong{color:var(--brand-dark);font-family:var(--font-display);font-size:14px;margin-right:3px}
+.nearby-recent{display:flex;align-items:center;gap:12px;overflow-x:auto;flex:1;min-width:0;scrollbar-width:none}
+.nearby-recent::-webkit-scrollbar{display:none}
+.nearby-row{display:flex;align-items:center;gap:5px;cursor:pointer;white-space:nowrap;flex-shrink:0}
+.nearby-row-icon{font-size:13px;flex-shrink:0}
+.nearby-row-text{display:flex;align-items:center;gap:4px;min-width:0}
+.nearby-row-title{font-size:12px;font-weight:600;color:var(--text);max-width:14ch;overflow:hidden;text-overflow:ellipsis}
 .nearby-row-meta{font-size:11px;color:var(--muted-2)}
-.nearby-empty{font-size:12.5px;color:var(--muted);padding:2px 0}
-.nearby-actions{display:flex;align-items:center;gap:14px;margin-top:6px;flex-wrap:wrap}
+.nearby-empty{font-size:12px;color:var(--muted)}
+.nearby-strip-actions{display:flex;align-items:center;gap:12px;margin-left:auto;flex-shrink:0}
 .nearby-cta{
-  height:38px;padding:0 16px;border-radius:var(--radius-full);background:var(--brand);color:#fff;
-  border:none;font-weight:700;font-size:13px;display:inline-flex;align-items:center;gap:6px;cursor:pointer;
-  transition:background .15s, transform .12s;
+  height:30px;padding:0 14px;border-radius:var(--radius-full);background:var(--brand);color:#fff;
+  border:none;font-weight:700;font-size:12px;cursor:pointer;transition:background .15s, transform .12s;
 }
 .nearby-cta:hover{background:var(--brand-dark);transform:translateY(-1px)}
-.nearby-cta [data-lucide]{width:14px;height:14px}
 .nearby-impact-link{
-  background:none;border:none;color:var(--brand-dark);font-weight:700;font-size:12.5px;cursor:pointer;padding:0;
+  background:none;border:none;color:var(--brand-dark);font-weight:700;font-size:12px;cursor:pointer;padding:0;white-space:nowrap;
 }
 .nearby-impact-link:hover{text-decoration:underline}
 
-@media (max-width:900px){
-  .nearby-map{width:170px}
-}
 @media (max-width:760px){
-  .nearby-activity{flex-direction:column;padding:16px;gap:14px;min-height:0}
-  .nearby-map{width:100%;height:110px}
-  .nearby-title{font-size:16px}
-  .nearby-sub{font-size:12.5px}
-  .nearby-counts{gap:14px}
-  .nearby-cta{width:100%;justify-content:center;height:44px}
+  .nearby-strip{padding:8px 14px;gap:10px;border-radius:14px}
+  .nearby-recent{display:none}
+  .nearby-strip-actions{margin-left:0}
+  .nearby-cta{height:32px}
 }
 
 /* ---------- Community Champions (monthly badges — real data only) ---------- */
@@ -1376,9 +1334,7 @@ html,body{overflow-x:hidden;max-width:100%}
   body.view-browse .sidebar,body.view-browse .main-col{display:block}
   body.view-browse #nearbySection,
   body.view-browse .hero-slides,
-  body.view-browse .hero-visual,
-  body.view-browse .hero-particle,
-  body.view-browse .hero-badge,
+  body.view-browse .hero-cta-compact,
   body.view-browse .hero-footer,
   body.view-browse #statsStrip,
   body.view-browse #trendingSection,

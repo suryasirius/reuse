@@ -752,23 +752,35 @@ function displayCategory(cat) { return LEGACY_CATEGORY_LABELS[cat] || cat; }
 // Rotating background colors for the quick-category icon row (visual only — purely decorative,
 // doesn't affect which category a click actually applies).
 const QUICK_CAT_COLORS = ['#2E8B77', '#3B82C4', '#D97B3F', '#C4457A', '#7B5FC4', '#4FA35C', '#C4903B'];
+const QUICK_CAT_VISIBLE = 6;
 function renderQuickCategories() {
   const row = $('#quickCategoriesRow');
   if (!row) return;
   if (state.section !== 'consumer') { row.innerHTML = ''; return; }
-  const cats = activeCategoryList().slice(0, 10);
+  const all = activeCategoryList();
+  const cats = all.slice(0, QUICK_CAT_VISIBLE);
+  const hasMore = all.length > QUICK_CAT_VISIBLE;
   row.innerHTML = cats.map((c, i) => `
     <button type="button" class="quick-cat-btn" data-c="${escapeHtml(c)}">
       <span class="quick-cat-icon" style="background:${QUICK_CAT_COLORS[i % QUICK_CAT_COLORS.length]}"><i data-lucide="${CATEGORY_ICONS[c] || 'package'}"></i></span>
       <span class="quick-cat-label">${escapeHtml(c)}</span>
     </button>
-  `).join('');
-  row.querySelectorAll('.quick-cat-btn').forEach(btn => btn.onclick = () => {
+  `).join('') + (hasMore ? `
+    <button type="button" class="quick-cat-btn quick-cat-more" id="quickCatMoreBtn">
+      <span class="quick-cat-icon quick-cat-icon-more"><i data-lucide="more-horizontal"></i></span>
+      <span class="quick-cat-label">More</span>
+    </button>
+  ` : '');
+  row.querySelectorAll('.quick-cat-btn:not(.quick-cat-more)').forEach(btn => btn.onclick = () => {
     state.category = btn.dataset.c;
     renderCategories();
     loadItems();
     document.querySelector('.page-layout')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   });
+  const moreBtn = $('#quickCatMoreBtn');
+  if (moreBtn) moreBtn.onclick = () => {
+    document.querySelector('.sidebar')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
   if (window.lucide) lucide.createIcons();
 }
 
