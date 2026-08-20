@@ -58,6 +58,11 @@ async function init() {
   bindBottomNav();
   bindMoreMenu();
   bindMobileMoreMenu();
+  const mobileSearchBtn = $('#mobileSearchBtn');
+  if (mobileSearchBtn) mobileSearchBtn.onclick = () => {
+    document.querySelector('.hero-banner')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    setTimeout(() => $('#search')?.focus(), 350);
+  };
   applySectionUi();
   loadEcoPanel();
   loadStatsStrip();
@@ -184,13 +189,17 @@ function applySectionUi() {
   $('#businessTeaserSection').innerHTML = '';
   $('#collectionsSection').innerHTML = '';
   $('#businessTeaserPreviewSection').innerHTML = '';
-  const postLabel = state.section === 'business_waste' ? 'Post business surplus' : (isRequests ? 'Post a request' : 'Post item');
-  $('#postBtn').innerHTML = `<i data-lucide="plus"></i> ${postLabel}`;
+  if ($('#businessAsideCard')) $('#businessAsideCard').innerHTML = '';
+  // The global header CTA is intentionally static "+ Post" now (not context-relabeled) — it opens
+  // the same 4-option chooser (Give/Exchange item, Item request, Service request, Business
+  // surplus) regardless of which section you're browsing, so posting a request never feels
+  // hidden just because you're on the Give & Take tab. See #postBtn's click handler below.
   if (window.lucide) lucide.createIcons();
   renderCategories();
   renderQuickCategories();
   if (isRequests) { loadRequests(); } else { loadItems(); loadTrending(); }
   loadBusinessTeaser();
+  loadBusinessAsideCard();
   if (state.section === 'consumer') {
     // Homepage order: Urgent Requests -> Urgent Food Rescue -> Trending (tabs) -> Categories+Products+Impact -> Community Story -> Business teaser -> Popular Collections.
     loadUrgentRequests();
@@ -408,6 +417,24 @@ function loadBusinessTeaser() {
   };
 }
 
+// Compact sidebar Business Surplus card — additive to (not a replacement for) the larger
+// #businessTeaserSection banner further down the page; same destination/action, just visible
+// higher up the page alongside the marketplace content instead of only after the full grid.
+function loadBusinessAsideCard() {
+  const el = $('#businessAsideCard');
+  if (!el) return;
+  if (state.section === 'business_waste') { el.innerHTML = ''; return; }
+  el.innerHTML = `<div class="business-aside-card">
+    <h3>🏭 Have business surplus to give away?</h3>
+    <p>Office furniture, equipment, electronics, packaging and more. Help reduce waste and support the community.</p>
+    <button type="button" class="btn-light" id="businessAsideBtn">Explore Business Surplus →</button>
+  </div>`;
+  $('#businessAsideBtn').onclick = () => {
+    document.querySelector('.section-tab[data-section="business_waste"]').click();
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+}
+
 function activeCategoryList() {
   if (state.section === 'business_waste') return state.businessCategories;
   if (state.section === 'requests') return state.requestType === 'service' ? state.serviceCategories : state.categories;
@@ -453,6 +480,8 @@ async function loadTrending() {
     return;
   }
   el.innerHTML = `<div class="trending-wrap">
+    <h2>🔥 Trending near you</h2>
+    <p class="highlight-sub">Popular items people are viewing and claiming nearby.</p>
     <div class="trend-tabs">${TREND_TABS.map((t, i) => `<button class="trend-tab${i === 0 ? ' active' : ''}" data-tab="${t.key}">${t.label}</button>`).join('')}</div>
     <div class="grid" id="trendGrid"></div>
   </div>`;
@@ -500,7 +529,7 @@ function bindTopBar() {
   $('#quickPostRequestBtn').onclick = () => { if (!state.user) return openAuthModal('login'); openPostRequestModal(); };
   $('#postBtn').onclick = () => {
     if (!state.user) return openAuthModal('login');
-    state.section === 'requests' ? openPostRequestModal() : openPostModal();
+    openPostSheet();
   };
   // heroPostBtn's click handler is wired per-slide by initHeroCarousel() instead of here,
   // since its label/action changes depending on which hero slide is currently active.
@@ -647,29 +676,38 @@ const MORE_MENU_GROUPS = [
   { label: 'Discover', items: [
     { key: 'categories', icon: 'layout-grid', label: 'Categories' },
     { key: 'nearby', icon: 'map-pin', label: 'Nearby' },
-    { key: 'filters', icon: 'sliders-horizontal', label: 'Filters' }
+    { key: 'filters', icon: 'sliders-horizontal', label: 'Filters' },
+    { key: 'champions', icon: 'trophy', label: 'Monthly Champions' }
   ]},
   { label: 'Community', items: [
-    { key: 'urgent', icon: 'heart-handshake', label: 'People asking for help' },
-    { key: 'champions', icon: 'trophy', label: 'Monthly Champions' },
-    { key: 'impact', icon: 'bar-chart-3', label: 'Impact Tracker' },
-    { key: 'community', icon: 'users', label: 'Community Stats' }
+    { key: 'community', icon: 'users', label: 'Community Stats' },
+    { key: 'requests', icon: 'hand-heart', label: 'Requests' },
+    { key: 'trust', icon: 'shield-check', label: 'Trust & Safety' }
   ]},
   { label: 'Business', items: [
     { key: 'business', icon: 'building-2', label: 'Business Surplus', badge: true }
   ]},
-  { label: 'Safety & Info', items: [
-    { key: 'trust', icon: 'shield-check', label: 'Trust & Safety' },
+  { label: 'About', items: [
     { key: 'about', icon: 'info', label: 'About ReUse Hub' }
   ]}
 ];
 function moreMenuItemsHtml() {
-  return MORE_MENU_GROUPS.map(g => `
+  const groups = MORE_MENU_GROUPS.map(g => `
     <div class="more-menu-group">
       <div class="more-menu-group-label">${escapeHtml(g.label)}</div>
       ${g.items.map(it => `<button type="button" role="menuitem" data-more="${it.key}"><i data-lucide="${it.icon}"></i> ${escapeHtml(it.label)}${it.badge ? ' <span class="new-badge">NEW</span>' : ''}</button>`).join('')}
     </div>
   `).join('');
+  // Highlighted footer CTA — same destination as the "impact" item above (openImpactModal), just
+  // given its own visual weight since Impact is one of ReUse Hub's differentiators.
+  const impactCta = `
+    <button type="button" class="more-menu-impact-cta" data-more="impact">
+      <span class="more-menu-impact-icon"><i data-lucide="leaf"></i></span>
+      <span class="more-menu-impact-text"><strong>Our Impact</strong><small>See how we're making a difference</small></span>
+      <i data-lucide="chevron-right"></i>
+    </button>
+  `;
+  return `<div class="more-menu-groups">${groups}</div>${impactCta}`;
 }
 const scrollToSel = (sel) => { const el = document.querySelector(sel); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' }); };
 const MORE_ACTIONS = {
@@ -681,6 +719,7 @@ const MORE_ACTIONS = {
   champions: () => scrollToSel('#championsSection'),
   impact: () => openImpactModal(),
   community: () => scrollToSel('#communitySection'),
+  requests: () => { const tab = document.querySelector('.section-tab[data-section="requests"]'); if (tab) tab.click(); window.scrollTo({ top: 0, behavior: 'smooth' }); },
   trust: () => scrollToSel('.trust-strip'),
   about: () => scrollToSel('footer')
 };
@@ -735,30 +774,58 @@ function renderVerifyBanner() {
 
 function debounce(fn, ms) { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; }
 
+// Header account cluster (avatar + name + chevron) opens a small dropdown for Log out (and Admin,
+// for admins) instead of a permanently-visible "Log out" pill — My posts/Activity/notifications
+// stay directly visible/lightweight. The trailing "⋮" overflow control opens the same dropdown
+// (not a second, different menu) — a real, functioning shortcut rather than a decorative icon.
 function renderNav() {
   const nav = $('#nav');
   if (state.user) {
+    const initial = escapeHtml((state.user.name || '?').trim().charAt(0).toUpperCase());
     nav.innerHTML = `
-      <span style="font-size:13px">Hi, ${escapeHtml(state.user.name)} ${state.user.account_type === 'business' ? '🏢' : ''}</span>
+      <button type="button" id="myItemsBtn" class="nav-icon-link"><i data-lucide="package"></i> My posts</button>
+      <button type="button" id="activityBtn" class="nav-icon-link"><i data-lucide="activity"></i> Activity</button>
       <div class="notif-wrap" id="notifWrap">
-        <button class="notif-btn" id="notifBtn">🔔<span class="notif-dot" id="notifDot" style="display:none"></span></button>
+        <button class="notif-btn" id="notifBtn" aria-label="Notifications"><i data-lucide="bell"></i><span class="notif-dot" id="notifDot" style="display:none"></span></button>
         <div class="notif-panel" id="notifPanel" style="display:none"></div>
       </div>
-      <button id="myItemsBtn">My posts</button>
-      <button id="activityBtn">Activity</button>
-      ${state.user.is_admin ? '<button id="adminBtn">🛡️ Admin</button>' : ''}
-      <button class="ghost" id="logoutBtn">Log out</button>`;
+      <div class="user-menu-wrap" id="userMenuWrap">
+        <button type="button" class="user-chip" id="userChipBtn" aria-haspopup="true" aria-expanded="false">
+          <span class="user-avatar">${initial}</span>
+          <span class="user-chip-label">Hi, ${escapeHtml(state.user.name)}${state.user.account_type === 'business' ? ' 🏢' : ''}</span>
+          <i data-lucide="chevron-down"></i>
+        </button>
+        <div class="user-menu-dropdown" id="userMenuDropdown" role="menu">
+          ${state.user.is_admin ? '<button type="button" role="menuitem" id="adminBtn"><i data-lucide="shield"></i> Admin</button>' : ''}
+          <button type="button" role="menuitem" id="logoutBtn" class="danger"><i data-lucide="log-out"></i> Log out</button>
+        </div>
+      </div>
+      <button type="button" class="header-overflow-btn" id="headerOverflowBtn" aria-label="More account options"><i data-lucide="more-vertical"></i></button>`;
     $('#notifBtn').onclick = (e) => { e.stopPropagation(); toggleNotifPanel(); };
     $('#myItemsBtn').onclick = () => openMyPosts();
     $('#activityBtn').onclick = () => openActivity();
-    if (state.user.is_admin) $('#adminBtn').onclick = () => openAdminDashboard();
-    $('#logoutBtn').onclick = async () => { await api('/api/logout', { method: 'POST' }); state.user = null; renderNav(); loadItems(); };
+    const userDropdown = $('#userMenuDropdown');
+    const userChipBtn = $('#userChipBtn');
+    const closeUserMenu = () => { userDropdown.classList.remove('open'); userChipBtn.setAttribute('aria-expanded', 'false'); };
+    const toggleUserMenu = (e) => {
+      e.stopPropagation();
+      const willOpen = !userDropdown.classList.contains('open');
+      userDropdown.classList.toggle('open', willOpen);
+      userChipBtn.setAttribute('aria-expanded', String(willOpen));
+    };
+    userChipBtn.onclick = toggleUserMenu;
+    $('#headerOverflowBtn').onclick = toggleUserMenu;
+    document.addEventListener('click', (e) => { if (!e.target.closest('#userMenuWrap')) closeUserMenu(); });
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeUserMenu(); });
+    if (state.user.is_admin) $('#adminBtn').onclick = () => { closeUserMenu(); openAdminDashboard(); };
+    $('#logoutBtn').onclick = async () => { closeUserMenu(); await api('/api/logout', { method: 'POST' }); state.user = null; renderNav(); loadItems(); };
     refreshNotifCount();
   } else {
     nav.innerHTML = `<button id="loginBtn">Log in</button><button id="signupBtn">Sign up</button>`;
     $('#loginBtn').onclick = () => openAuthModal('login');
     $('#signupBtn').onclick = () => openAuthModal('signup');
   }
+  if (window.lucide) lucide.createIcons();
   renderVerifyBanner();
 }
 
@@ -790,7 +857,10 @@ function displayCategory(cat) { return LEGACY_CATEGORY_LABELS[cat] || cat; }
 
 // Rotating background colors for the quick-category icon row (visual only — purely decorative,
 // doesn't affect which category a click actually applies).
-const QUICK_CAT_COLORS = ['#2E8B77', '#3B82C4', '#D97B3F', '#C4457A', '#7B5FC4', '#4FA35C', '#C4903B'];
+// Quick category rail — one unified soft-tint icon treatment (no per-category rainbow colors),
+// matches the same green/neutral palette used everywhere else. "More" is styled identically to
+// every other item (no separate button chrome) and just scrolls to the existing full category
+// sidebar — same underlying state.category / renderCategories() / loadItems() logic as before.
 const QUICK_CAT_VISIBLE = 6;
 function renderQuickCategories() {
   const row = $('#quickCategoriesRow');
@@ -799,20 +869,21 @@ function renderQuickCategories() {
   const all = activeCategoryList();
   const cats = all.slice(0, QUICK_CAT_VISIBLE);
   const hasMore = all.length > QUICK_CAT_VISIBLE;
-  row.innerHTML = cats.map((c, i) => `
-    <button type="button" class="quick-cat-btn" data-c="${escapeHtml(c)}">
-      <span class="quick-cat-icon" style="background:${QUICK_CAT_COLORS[i % QUICK_CAT_COLORS.length]}"><i data-lucide="${CATEGORY_ICONS[c] || 'package'}"></i></span>
+  row.innerHTML = cats.map(c => `
+    <button type="button" class="quick-cat-btn${state.category === c ? ' active' : ''}" data-c="${escapeHtml(c)}">
+      <span class="quick-cat-icon"><i data-lucide="${CATEGORY_ICONS[c] || 'package'}"></i></span>
       <span class="quick-cat-label">${escapeHtml(c)}</span>
     </button>
   `).join('') + (hasMore ? `
     <button type="button" class="quick-cat-btn quick-cat-more" id="quickCatMoreBtn">
-      <span class="quick-cat-icon quick-cat-icon-more"><i data-lucide="more-horizontal"></i></span>
+      <span class="quick-cat-icon"><i data-lucide="more-horizontal"></i></span>
       <span class="quick-cat-label">More</span>
     </button>
   ` : '');
   row.querySelectorAll('.quick-cat-btn:not(.quick-cat-more)').forEach(btn => btn.onclick = () => {
     state.category = btn.dataset.c;
     renderCategories();
+    renderQuickCategories();
     loadItems();
     document.querySelector('.page-layout')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   });

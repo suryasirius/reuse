@@ -29,11 +29,14 @@
         <button type="button" class="ghost more-menu-btn" id="moreMenuBtn" aria-haspopup="true" aria-expanded="false">More <i data-lucide="chevron-down"></i></button>
         <div class="more-menu-dropdown" id="moreMenuDropdown" role="menu"></div>
       </div>
+      <!-- Mobile-only header search shortcut — scrolls to and focuses the existing hero search
+           input rather than duplicating search logic. -->
+      <button type="button" class="ghost mobile-more-btn mobile-only-section" id="mobileSearchBtn" aria-label="Search"><i data-lucide="search"></i></button>
       <!-- Mobile-only More trigger: the desktop dropdown above is hidden on mobile, this opens the
            same grouped menu content as a bottom sheet instead (one combined mobile menu, see
            #mobileMoreSheetOverlay near the Post action sheet below). -->
-      <button type="button" class="ghost mobile-more-btn mobile-only-section" id="mobileMoreBtn" aria-label="More"><i data-lucide="menu"></i></button>
-      <button class="primary-btn" id="postBtn"><i data-lucide="plus"></i> Post item</button>
+      <button type="button" class="ghost mobile-more-btn mobile-only-section" id="mobileMoreBtn" aria-label="More"><i data-lucide="more-vertical"></i></button>
+      <button class="primary-btn" id="postBtn"><i data-lucide="plus"></i> Post</button>
       <nav id="nav"></nav>
     </div>
   </div>
@@ -53,7 +56,17 @@
 
   <div class="hero-banner hero-banner-compact">
     <div class="hero-compact-row">
-      <span class="hero-compact-title" id="sectionHint">Give. Find. Reuse. Give away things you no longer need, or find useful items near you.</span>
+      <div class="hero-text-col">
+        <h1 class="hero-headline">Find useful things near you</h1>
+        <p class="hero-compact-title" id="sectionHint">Give away what you don't need. Find what you need. Help your community.</p>
+      </div>
+      <!-- Decorative hero illustration (desktop only — hidden on mobile via CSS so it never
+           competes with the search bar there). Real photographic asset (armchair/lamp/plant/bicycle
+           lifestyle scene, transparent edges) sourced by the user and placed at
+           public/assets/hero/reuse-hero.png, replacing the earlier inline-SVG placeholder. -->
+      <div class="hero-illustration" aria-hidden="true">
+        <img src="/assets/hero/reuse-hero.png" alt="" loading="eager">
+      </div>
       <button class="hero-cta hero-cta-compact" id="heroPostBtn"><span class="hero-cta-label">Post an item</span> <i data-lucide="arrow-up-right"></i></button>
     </div>
     <div class="hero-search-wrap">
@@ -105,39 +118,52 @@
        Champions/community content, matching the "marketplace first, community second" decision. -->
   <div id="trendingSection"></div>
 
-  <div id="urgentSection" class="homepage-section"></div>
-  <div id="serviceRequestsSection" class="homepage-section"></div>
-  <div id="urgentFoodSection" class="homepage-section"></div>
-  <div class="req-type-tabs" id="reqTypeTabs" style="display:none">
-    <button class="chip active" data-rt="thing">📦 Item requests</button>
-    <button class="chip" data-rt="service">🔧 Service requests</button>
-  </div>
-
-  <section class="champions-section" id="championsSection"></section>
-
-  <!-- Quick-browse category shortcuts (visual pass to match the OLX-style reference mockup) —
-       additive only: clicking one just sets the existing category filter and scrolls to the
-       existing #categories/#content area below. Doesn't replace or change that area's behavior. -->
-  <div class="quick-categories-row" id="quickCategoriesRow"></div>
-
-  <div class="page-layout">
-    <aside class="sidebar">
-      <h3 class="sidebar-title">Categories</h3>
-      <div class="categories" id="categories"></div>
-    </aside>
-    <div class="main-col">
-      <div id="content"></div>
-    </div>
-    <aside class="eco-panel" id="ecoPanel">
-      <div class="eco-head"><i data-lucide="globe"></i> Impact Tracker</div>
-      <div class="eco-stats" id="ecoStats"></div>
-      <button type="button" class="eco-view-full-btn" id="ecoViewFullBtn">View Full Impact</button>
-      <div class="eco-earth">
-        <div class="eco-earth-icon">🌍</div>
-        <p>Building a circular economy, one item at a time.</p>
+  <!-- Marketplace-first two-column layout: everything a visitor browses (requests, services,
+       champions, categories, the grid) sits in the main column; Impact Tracker + a compact
+       Business Surplus card form a persistent right sidebar next to all of it, not just next to
+       the grid. On mobile this collapses to plain stacked sections in the same source order
+       (display:contents — see the mobile media query), so nothing is duplicated. -->
+  <div class="marketplace-columns">
+    <div class="marketplace-main">
+      <div class="requests-services-grid">
+        <div id="urgentSection" class="homepage-section"></div>
+        <div id="serviceRequestsSection" class="homepage-section"></div>
       </div>
-      <div id="ecoExtra"></div>
-      <div id="ecoNearby"></div>
+      <div id="urgentFoodSection" class="homepage-section"></div>
+      <div class="req-type-tabs" id="reqTypeTabs" style="display:none">
+        <button class="chip active" data-rt="thing">📦 Item requests</button>
+        <button class="chip" data-rt="service">🔧 Service requests</button>
+      </div>
+
+      <section class="champions-section" id="championsSection"></section>
+
+      <!-- Quick-browse category shortcuts — additive only: clicking one just sets the existing
+           category filter and scrolls to the existing #categories/#content area below. -->
+      <div class="quick-categories-row" id="quickCategoriesRow"></div>
+
+      <div class="page-layout">
+        <aside class="sidebar">
+          <h3 class="sidebar-title">Categories</h3>
+          <div class="categories" id="categories"></div>
+        </aside>
+        <div class="main-col">
+          <div id="content"></div>
+        </div>
+      </div>
+    </div>
+    <aside class="marketplace-aside">
+      <div class="eco-panel" id="ecoPanel">
+        <div class="eco-head"><i data-lucide="globe"></i> Impact Tracker</div>
+        <div class="eco-stats" id="ecoStats"></div>
+        <button type="button" class="eco-view-full-btn" id="ecoViewFullBtn">View Full Impact</button>
+        <div class="eco-earth">
+          <div class="eco-earth-icon">🌍</div>
+          <p>Building a circular economy, one item at a time.</p>
+        </div>
+        <div id="ecoExtra"></div>
+        <div id="ecoNearby"></div>
+      </div>
+      <div id="businessAsideCard"></div>
     </aside>
   </div>
 
