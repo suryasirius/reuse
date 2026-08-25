@@ -430,7 +430,7 @@ main{max-width:1800px;width:calc(100vw - 64px);margin:0 auto;padding:14px 12px 6
     top:auto;left:auto;right:0;bottom:0;width:38%;height:100%;
   }
   .hero-cta-compact{
-    position:absolute;top:24px;right:24px;margin-top:0;
+    position:absolute;top:28px;right:36px;margin-top:0;
     height:42px;padding:0 18px;border-radius:12px;font-size:13px;
   }
   .hero-search-wrap{
@@ -499,20 +499,21 @@ main{max-width:1800px;width:calc(100vw - 64px);margin:0 auto;padding:14px 12px 6
   padding:16px;box-shadow:0 10px 30px rgba(0,0,0,.03);
 }
 .sidebar-title{
-  font-family:var(--font-display);margin:0 0 12px;font-size:12px;font-weight:700;
-  color:var(--muted);text-transform:uppercase;letter-spacing:.06em;
+  font-family:var(--font-display);margin:0 0 12px;font-size:12px;font-weight:800;
+  color:#3d4a41;text-transform:uppercase;letter-spacing:.06em;
 }
-.sidebar .categories{display:flex;flex-direction:column;flex-wrap:nowrap;gap:2px;margin-bottom:0}
+.sidebar .categories{display:flex;flex-direction:column;flex-wrap:nowrap;gap:5px;margin-bottom:0}
 .sidebar .chip{
   display:flex;width:100%;text-align:left;align-items:center;gap:9px;justify-content:flex-start;
-  border-radius:14px;border-color:transparent;background:transparent;padding:9px 10px;font-weight:500;
+  border-radius:14px;border-color:transparent;background:transparent;padding:9px 10px;
+  font-weight:600;color:#3d4a41;
 }
 .sidebar .chip .cat-icon{display:inline-flex;color:var(--muted-2);flex-shrink:0}
 .sidebar .chip .cat-icon [data-lucide]{width:15px;height:15px}
 .sidebar .chip.active .cat-icon{color:var(--brand)}
 .sidebar .chip{transition:background .15s var(--ease), transform .15s var(--ease), box-shadow .15s var(--ease)}
 .sidebar .chip:hover{background:var(--brand-softer);border-color:transparent;color:var(--text);transform:translateX(3px)}
-.sidebar .chip.active{background:var(--brand-light);color:var(--brand);border-color:transparent;font-weight:700;box-shadow:0 3px 10px rgba(23,138,75,.12)}
+.sidebar .chip.active{background:var(--brand-light);color:var(--brand-dark);border-color:transparent;font-weight:800;box-shadow:0 3px 10px rgba(23,138,75,.16)}
 .sidebar .chip.active .cat-icon{filter:none}
 .main-col{flex:1;min-width:0}
 
@@ -525,11 +526,17 @@ main{max-width:1800px;width:calc(100vw - 64px);margin:0 auto;padding:14px 12px 6
 /* ---- Marketplace two-column layout: main browsing column + persistent right sidebar
    (Impact Tracker + compact Business Surplus card) spanning requests/services/champions/
    categories/grid, not just the grid. ---- */
-.marketplace-columns{display:grid;grid-template-columns:1fr 280px;gap:24px;align-items:start;margin-bottom:8px}
+.marketplace-columns{display:grid;grid-template-columns:1fr 240px;gap:24px;align-items:start;margin-bottom:8px}
 .marketplace-main{min-width:0}
 .marketplace-aside{display:flex;flex-direction:column;gap:20px;position:sticky;top:96px;max-height:calc(100vh - 116px);overflow-y:auto}
-.requests-services-grid{display:grid;grid-template-columns:1fr 1fr;gap:20px}
+.requests-services-grid{display:grid;grid-template-columns:1fr 1fr;gap:20px;align-items:stretch}
 .requests-services-grid .homepage-section:empty{display:none}
+/* Grid items stretch to the row's height by default, but the colored panel div inside each
+   (.highlight-wrap) only took its own content height — leaving the shorter panel's background
+   visibly shorter than its sibling. Filling the stretched cell equalizes the two panels exactly. */
+.requests-services-grid .homepage-section{height:100%}
+.requests-services-grid .highlight-wrap{height:100%;display:flex;flex-direction:column}
+.requests-services-grid .highlight-wrap .grid.hscroll{margin-top:auto}
 /* Below ~1500px, a fixed-width categories sidebar (250px) PLUS a fixed-width Impact/Business
    aside (280px) squeezed either side of the grid at the same time was leaving the actual product
    grid only ~2 columns wide on common 1366/1440 laptop screens — the exact "cards too narrow,
@@ -631,9 +638,9 @@ main{max-width:1800px;width:calc(100vw - 64px);margin:0 auto;padding:14px 12px 6
 
 /* ---------- grid / cards: v2.0 spec — price badge top-left, wishlist heart top-right ---------- */
 .content-title{font-size:16px;font-weight:800;margin:0 0 14px}
-.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:24px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:20px}
 .card{
-  background:#fff;border:1px solid var(--border-soft);border-radius:22px;padding:14px;
+  background:#fff;border:1px solid var(--border-soft);border-radius:22px;padding:12px;
   overflow:visible;cursor:pointer;
   box-shadow:0 10px 30px rgba(0,0,0,.05);
   transition:transform .3s var(--ease), box-shadow .3s var(--ease);
@@ -641,7 +648,7 @@ main{max-width:1800px;width:calc(100vw - 64px);margin:0 auto;padding:14px 12px 6
 }
 .card:hover{transform:translateY(-6px);box-shadow:0 22px 50px rgba(0,0,0,.1)}
 .card .thumb{
-  width:100%;height:260px;position:relative;border-radius:16px;overflow:hidden;margin-bottom:12px;
+  width:100%;height:230px;position:relative;border-radius:16px;overflow:hidden;margin-bottom:12px;
   background:linear-gradient(135deg,#eef6f0,#f4f8f5);
   display:flex;align-items:center;justify-content:center;
 }
@@ -666,13 +673,13 @@ main{max-width:1800px;width:calc(100vw - 64px);margin:0 auto;padding:14px 12px 6
 .card .wishlist-btn.active svg{fill:#f43f5e;stroke:#f43f5e}
 .card h3{margin:0 0 4px;font-size:16px;font-weight:600;line-height:1.3;letter-spacing:-.005em;color:#111827;transition:color .15s}
 .card:hover h3{color:var(--brand)}
-.card .meta{margin:0 0 14px;font-size:12.5px;font-weight:500;color:var(--muted);display:flex;align-items:center;gap:4px;flex-wrap:wrap}
+.card .meta{margin:0 0 12px;font-size:12.5px;font-weight:500;color:var(--muted);display:flex;align-items:center;gap:4px;flex-wrap:wrap}
 .card .meta .owner-name{font-weight:500;color:var(--muted);display:inline-flex;align-items:center;gap:3px}
 .card .meta .owner-check{color:var(--brand);display:inline-flex}
 .card .meta .owner-check svg{width:13px;height:13px}
-.card .badge-row{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px}
+.card .badge-row{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px}
 .card .footer-bar{
-  display:flex;align-items:center;justify-content:space-between;padding-top:12px;gap:10px;
+  display:flex;align-items:center;justify-content:space-between;padding-top:8px;gap:10px;
   border-top:1px solid var(--border-soft);font-size:12.5px;font-weight:600;color:var(--muted);
 }
 .card .footer-bar .loc{display:inline-flex;align-items:center;gap:5px}
@@ -718,8 +725,8 @@ main{max-width:1800px;width:calc(100vw - 64px);margin:0 auto;padding:14px 12px 6
 .pickup-badge{font-size:11px;background:#f0f2ef;color:var(--muted);padding:3px 10px;border-radius:var(--radius-full);font-weight:600}
 .owner-badge{font-size:11px;background:#f0f2ef;padding:3px 10px;border-radius:var(--radius-full);color:var(--muted);font-weight:600}
 
-.trending-wrap{margin-bottom:28px}
-.homepage-section{margin-bottom:28px}
+.trending-wrap{margin-bottom:24px}
+.homepage-section{margin-bottom:24px}
 
 .community-story{background:linear-gradient(160deg,#fff,var(--brand-softer));border:1px solid var(--border-soft);border-radius:24px;padding:32px;display:flex;align-items:center;gap:24px;flex-wrap:wrap}
 .community-story .quote-icon{font-size:38px;flex-shrink:0}
@@ -735,26 +742,28 @@ main{max-width:1800px;width:calc(100vw - 64px);margin:0 auto;padding:14px 12px 6
 .business-teaser .btn-light{background:var(--pop);color:var(--pop-ink);border:none;padding:12px 22px;border-radius:14px;font-weight:800;font-size:13.5px;cursor:pointer;white-space:nowrap;transition:transform .15s var(--ease)}
 .business-teaser .btn-light:hover{transform:translateY(-1px) scale(1.03)}
 
-.section-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px}
+.section-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
 .section-head h2{font-size:18px;margin:0;font-weight:800}
-.collections-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:20px}
-.collection-card{background:#fff;border:1px solid var(--border-soft);border-radius:20px;padding:18px;box-shadow:var(--shadow-xs)}
-.collection-card .collection-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
+.collections-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px}
+.collection-card{background:#fff;border:1px solid var(--border-soft);border-radius:20px;padding:16px;box-shadow:var(--shadow-xs)}
+.collection-card .collection-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
 .collection-card h3{margin:0;font-size:15px;font-weight:800}
 .collection-mini-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
 .collection-mini-grid .mini-thumb{aspect-ratio:1;border-radius:12px;background:linear-gradient(135deg,#eef6f0,#f4f8f5);display:flex;align-items:center;justify-content:center;font-size:26px;overflow:hidden;cursor:pointer}
 .collection-mini-grid .mini-thumb img{width:100%;height:100%;object-fit:cover}
 .trending-wrap h2{font-size:19px;margin:0 0 4px;display:flex;align-items:center;gap:6px;font-weight:700;color:var(--text)}
-.trending-wrap .highlight-sub{font-size:13px;margin:0 0 14px}
-/* 5 solid cards, not 8 cramped ones — fixed 5-column grid at desktop widths so titles get real
-   room instead of truncating; falls back to fewer columns as the viewport narrows. */
-.trending-wrap .grid{grid-template-columns:repeat(5,1fr);gap:18px;align-items:stretch}
+.trending-wrap .highlight-sub{font-size:13px;margin:0 0 10px}
+/* 6 solid cards, not 8 cramped ones — fixed 6-column grid at desktop widths so a full homepage
+   preview (capped at 6 in app.js) always fills one row instead of wrapping a stray 6th/7th card
+   to a second row; falls back to fewer columns as the viewport narrows. */
+.trending-wrap .grid{grid-template-columns:repeat(6,minmax(0,1fr));gap:14px;align-items:stretch}
 .trending-wrap .card{height:100%}
-.trending-wrap .card .thumb{height:190px}
+.trending-wrap .card .thumb{height:170px}
 .trending-wrap .card h3{
   font-size:15.5px;
   display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;
 }
+@media (max-width:1650px){.trending-wrap .grid{grid-template-columns:repeat(5,1fr)}}
 @media (max-width:1400px){.trending-wrap .grid{grid-template-columns:repeat(4,1fr)}}
 @media (max-width:1000px){.trending-wrap .grid{grid-template-columns:repeat(3,1fr)}}
 @media (max-width:700px){.trending-wrap .grid{grid-template-columns:repeat(2,1fr);gap:10px}}
@@ -767,7 +776,7 @@ main{max-width:1800px;width:calc(100vw - 64px);margin:0 auto;padding:14px 12px 6
 .trend-tab:hover{border-color:var(--brand);color:var(--brand-dark)}
 .trend-tab.active{background:var(--brand);color:#fff;border-color:var(--brand)}
 
-.highlight-wrap{margin-bottom:22px;border-radius:var(--radius-lg);padding:16px 18px 18px;border:1px solid var(--border-soft)}
+.highlight-wrap{margin-bottom:16px;border-radius:var(--radius-lg);padding:12px 16px 16px;border:1px solid var(--border-soft)}
 .highlight-wrap.hl-education{background:linear-gradient(160deg,#fff,var(--brand-softer))}
 .highlight-wrap.hl-construction{background:linear-gradient(160deg,#fff,#fff6ec)}
 .highlight-wrap.hl-urgent{background:linear-gradient(160deg,#fff,#fdeeee);border-color:#f6d3d3}
@@ -1246,9 +1255,9 @@ html,body{overflow-x:hidden;max-width:100%}
 /* ---------- Community Champions (monthly badges — real data only) ---------- */
 .champions-section{
   background:var(--card);border:1px solid var(--border);border-radius:var(--radius-lg);
-  padding:14px 20px;margin:0 0 20px;box-shadow:var(--shadow-xs);
+  padding:12px 16px;margin:0 0 16px;box-shadow:var(--shadow-xs);
 }
-.champions-top{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;margin-bottom:12px;flex-wrap:wrap}
+.champions-top{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;margin-bottom:8px;flex-wrap:wrap}
 .champions-head{font-weight:700;font-size:18px;color:var(--text)}
 .champions-sub{font-size:12px;color:var(--muted);margin-top:2px}
 .champions-month{

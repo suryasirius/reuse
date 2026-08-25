@@ -239,9 +239,9 @@ async function loadServiceRequestsPreview() {
   let items = [];
   try { items = await api('/api/requests?request_type=service&sort=newest'); } catch (e) { /* non-critical */ }
   if (!items.length) { el.innerHTML = ''; return; }
-  const shown = items.slice(0, 4);
+  const shown = items.slice(0, 3);
   el.innerHTML = `<div class="highlight-wrap hl-service">
-    <h2>🔧 Services people need ${items.length > 4 ? `<button class="view-all-link" id="serviceReqViewAll">View all (${items.length}) →</button>` : ''}</h2>
+    <h2>🔧 Services people need ${items.length > 3 ? `<button class="view-all-link" id="serviceReqViewAll">View all (${items.length}) →</button>` : ''}</h2>
     <p class="highlight-sub">Electrician, plumber, carpenter and more — offer your help nearby.</p>
     <div class="grid hscroll">${shown.map(requestCardHtml).join('')}</div>
   </div>`;
@@ -490,7 +490,10 @@ async function loadTrending() {
     loadTrendTab(btn.dataset.tab);
   });
   const grid = $('#trendGrid');
-  grid.innerHTML = hot.map(cardHtml).join('');
+  // Homepage preview caps at 6 (matches the fixed 6-column desktop grid so the row is always
+  // full, not dependent on however many items happen to have request_count > 0 right now).
+  // "View all" still shows the complete trending set, unaffected.
+  grid.innerHTML = hot.slice(0, 6).map(cardHtml).join('');
   grid.querySelectorAll('.card').forEach(c => c.onclick = () => openDetail(c.dataset.id));
   bindWishlistButtons(grid);
 }
@@ -501,16 +504,16 @@ async function loadTrendTab(tab) {
   let items = [];
   try {
     if (tab === 'hot') {
-      items = await api('/api/items-trending?listing_type=' + state.section);
+      items = (await api('/api/items-trending?listing_type=' + state.section)).slice(0, 6);
     } else if (tab === 'new') {
-      items = (await api('/api/items?listing_type=' + state.section)).slice(0, 8);
+      items = (await api('/api/items?listing_type=' + state.section)).slice(0, 6);
     } else if (tab === 'near') {
       const loc = (state.user && state.user.location) || '';
       const params = new URLSearchParams({ listing_type: state.section });
       if (loc) params.set('location', loc);
-      items = (await api('/api/items?' + params.toString())).slice(0, 8);
+      items = (await api('/api/items?' + params.toString())).slice(0, 6);
     } else if (tab === 'free') {
-      items = (await api('/api/items?listing_type=' + state.section + '&price_type=free')).slice(0, 8);
+      items = (await api('/api/items?listing_type=' + state.section + '&price_type=free')).slice(0, 6);
     }
   } catch (e) { /* non-critical */ }
   if (!items.length) { grid.innerHTML = `<div class="empty">Nothing here yet.</div>`; return; }
