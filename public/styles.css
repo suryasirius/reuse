@@ -415,7 +415,7 @@ main{max-width:1800px;width:calc(100vw - 64px);margin:0 auto;padding:14px 12px 6
    the original flex-flow layout from the block above. */
 @media (min-width:900px){
   .hero-banner-compact{
-    height:290px;min-height:290px;max-height:290px;
+    height:318px;min-height:318px;max-height:318px;
     padding:28px 36px 24px;border-radius:22px;
     display:block;gap:0;
   }
@@ -439,8 +439,26 @@ main{max-width:1800px;width:calc(100vw - 64px);margin:0 auto;padding:14px 12px 6
   .hero-search-wrap .searchbar{min-height:56px;padding:0 8px 0 22px}
 }
 @media (min-width:1200px){
-  .hero-banner-compact{height:300px;min-height:300px;max-height:300px}
+  .hero-banner-compact{height:330px;min-height:330px;max-height:330px}
 }
+/* Explicit Search button + "Popular:" quick-category row under the hero search — the height
+   increase above (290/300 -> 318/330) is a small, deliberate exception to accommodate them. */
+.hero-search-btn{
+  height:40px;padding:0 18px;border-radius:999px;background:var(--brand);color:#fff;
+  border:none;font-weight:700;font-size:13px;display:inline-flex;align-items:center;gap:6px;
+  cursor:pointer;flex-shrink:0;transition:background .15s, transform .12s var(--ease);
+}
+.hero-search-btn:hover{background:#2CA56A;transform:translateY(-1px)}
+.hero-search-btn [data-lucide]{width:14px;height:14px}
+.hero-popular-row{
+  display:flex;align-items:center;gap:12px;margin-top:10px;flex-wrap:wrap;
+}
+.hero-popular-label{font-size:12px;font-weight:600;color:rgba(255,255,255,.75)}
+.hero-popular-link{
+  background:none;border:none;padding:0;color:rgba(255,255,255,.92);font-size:12.5px;font-weight:600;
+  cursor:pointer;text-decoration:none;transition:color .15s;
+}
+.hero-popular-link:hover{color:var(--pop);text-decoration:underline}
 /* Browse view hides the hero row entirely and only keeps the search bar; without this, the
    fixed-height hero above would leave an empty box and the now-absolute search-wrap would
    collapse the container to 0 height (no in-flow children left to size it). Restores the
@@ -460,8 +478,10 @@ main{max-width:1800px;width:calc(100vw - 64px);margin:0 auto;padding:14px 12px 6
 }
 .stats-strip .stat{
   padding:14px;text-align:center;border-right:1px solid var(--border-soft);
+  display:flex;flex-direction:column;align-items:center;
 }
 .stats-strip .stat:last-child{border-right:none}
+.stats-strip .stat .stat-icon{width:18px;height:18px;color:var(--brand);margin-bottom:6px}
 .stats-strip .stat .num{
   font-family:var(--font-display);font-size:24px;font-weight:800;color:var(--brand-dark);letter-spacing:-.02em;display:block;
 }
@@ -566,8 +586,15 @@ main{max-width:1800px;width:calc(100vw - 64px);margin:0 auto;padding:14px 12px 6
   font-weight:800;font-size:12.5px;cursor:pointer;transition:transform .15s var(--ease);
 }
 .business-aside-card .btn-light:hover{transform:translateY(-1px) scale(1.02)}
-.eco-head{display:flex;align-items:center;gap:6px;color:var(--pop);font-size:10.5px;font-weight:800;text-transform:uppercase;letter-spacing:.05em;margin-bottom:16px}
-.eco-head [data-lucide]{width:14px;height:14px}
+.eco-head{display:flex;align-items:center;gap:8px;color:#fff;font-size:12.5px;font-weight:800;text-transform:uppercase;letter-spacing:.05em;margin-bottom:16px}
+.eco-head [data-lucide]{
+  width:14px;height:14px;flex-shrink:0;padding:6px;box-sizing:content-box;
+  background:rgba(255,255,255,.14);border-radius:50%;color:var(--pop);
+}
+.eco-panel-section h4 [data-lucide]{
+  width:12px;height:12px;flex-shrink:0;padding:5px;box-sizing:content-box;
+  background:rgba(255,255,255,.14);border-radius:50%;color:var(--pop);
+}
 .eco-stats{display:flex;flex-direction:column;gap:14px}
 .eco-stat{padding-bottom:14px;border-bottom:1px solid rgba(255,255,255,.12)}
 .eco-stat:last-child{border-bottom:none;padding-bottom:0}
@@ -742,6 +769,10 @@ main{max-width:1800px;width:calc(100vw - 64px);margin:0 auto;padding:14px 12px 6
 .community-story .story-link:hover{text-decoration:underline}
 
 .business-teaser{background:linear-gradient(135deg,var(--dark-panel),var(--dark-panel-2));border-radius:24px;padding:32px;color:#fff;display:flex;align-items:center;justify-content:space-between;gap:20px;flex-wrap:wrap}
+.business-teaser-copy{flex:1;min-width:220px}
+.business-teaser-art{width:120px;height:100px;flex-shrink:0}
+.business-teaser-art svg{width:100%;height:100%;display:block}
+@media (max-width:900px){.business-teaser-art{display:none}}
 .business-teaser h2{margin:0 0 6px;font-size:20px;font-weight:700;display:flex;align-items:center;gap:8px}
 .business-teaser h2 .section-icon{color:#fff}
 .business-teaser p{margin:0;color:rgba(255,255,255,.8);font-size:13.5px;max-width:50ch}
@@ -1283,12 +1314,19 @@ html,body{overflow-x:hidden;max-width:100%}
 .champion-box.theme-gold{background:#FFF8E6;border-color:#F5E3AE}
 .champion-box.theme-silver{background:#F0F4FA;border-color:#D8E1EE}
 .champion-box.theme-bronze{background:var(--brand-light);border-color:var(--border-soft)}
-.champion-rank{position:absolute;top:8px;left:10px;font-size:15px;line-height:1}
+.champion-rank{position:absolute;top:8px;left:10px;line-height:1}
+.champion-rank-icon{width:14px;height:14px;color:var(--muted-2)}
+.theme-gold .champion-rank-icon{color:#C89A2E}
+.theme-silver .champion-rank-icon{color:#8FA0B3}
+.theme-bronze .champion-rank-icon{color:var(--brand-dark)}
 .champion-icon-wrap{
   width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;
   background:rgba(255,255,255,.65);margin-bottom:6px;
 }
-.champion-icon{font-size:17px;line-height:1}
+.champion-icon{width:18px;height:18px}
+.theme-gold .champion-icon{color:#C89A2E}
+.theme-silver .champion-icon{color:#7C8CA0}
+.theme-bronze .champion-icon{color:var(--brand-dark)}
 .champion-title{font-weight:800;font-size:12px;color:var(--text)}
 .champion-name{font-weight:700;font-size:12px;color:var(--text);margin-top:4px}
 .champion-sub{font-size:11px;color:var(--meta);margin-top:2px;min-height:0}

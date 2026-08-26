@@ -82,6 +82,7 @@
           <option value="rent">Rent</option>
         </select>
         <button class="filters-btn" type="button" id="filtersBtn"><i data-lucide="sliders-horizontal"></i> Filters</button>
+        <button class="hero-search-btn" type="button" id="heroSearchBtn"><i data-lucide="search"></i> Search</button>
       </div>
       <div class="filters-panel" id="filtersPanel" style="display:none">
         <label class="urgent-check"><input type="checkbox" id="filterUrgent"> 🔥 Urgent only</label>
@@ -92,6 +93,17 @@
             <option value="price_low">Price: Low → High</option>
           </select>
         </label>
+      </div>
+      <!-- Quick category shortcuts under the hero search, matching the reference's "Popular:"
+           row — same category filter the sidebar/quick-categories row already uses, just a
+           faster path to the top few from the hero itself. -->
+      <div class="hero-popular-row" id="heroPopularRow">
+        <span class="hero-popular-label">Popular:</span>
+        <button type="button" class="hero-popular-link" data-cat="Books & Media">Books</button>
+        <button type="button" class="hero-popular-link" data-cat="Furniture">Furniture</button>
+        <button type="button" class="hero-popular-link" data-cat="Electronics & Phones">Electronics</button>
+        <button type="button" class="hero-popular-link" data-cat="Vehicles">Bicycles</button>
+        <button type="button" class="hero-popular-link" data-cat="Baby & Kids">Toys</button>
       </div>
     </div>
   </div>

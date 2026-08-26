@@ -140,14 +140,15 @@ async function loadStatsStrip() {
   try {
     const stats = await api('/api/impact');
     const items = [
-      { n: stats.reused_items || 0, label: 'Items reused' },
-      { n: stats.total_users || 0, label: 'Members' },
-      { n: stats.completed_requests || 0, label: 'Successful exchanges' },
-      { n: stats.active_today || 0, label: 'Active today' },
-      { n: stats.verified_users || 0, label: 'Verified members' }
+      { n: stats.reused_items || 0, label: 'Items reused', icon: 'recycle' },
+      { n: stats.total_users || 0, label: 'Members', icon: 'users' },
+      { n: stats.completed_requests || 0, label: 'Successful exchanges', icon: 'repeat' },
+      { n: stats.active_today || 0, label: 'Active today', icon: 'calendar-check' },
+      { n: stats.verified_users || 0, label: 'Verified members', icon: 'shield-check' }
     ];
-    el.innerHTML = items.map((s, i) => `<div class="stat"><span class="num" id="statNum${i}">0</span><span class="label">${s.label}</span></div>`).join('');
+    el.innerHTML = items.map((s, i) => `<div class="stat"><i data-lucide="${s.icon}" class="stat-icon"></i><span class="num" id="statNum${i}">0</span><span class="label">${s.label}</span></div>`).join('');
     items.forEach((s, i) => animateCount($('#statNum' + i), s.n));
+    if (window.lucide) lucide.createIcons();
   } catch (e) { /* non-critical */ }
 }
 
@@ -410,9 +411,23 @@ function loadBusinessTeaser() {
   if (!el) return;
   if (state.section === 'business_waste') { el.innerHTML = ''; return; }
   el.innerHTML = `<div class="business-teaser">
-    <div>
+    <div class="business-teaser-copy">
       <h2><i data-lucide="factory" class="section-icon"></i> Have business surplus to give away?</h2>
       <p>Office furniture, equipment, electronics and packaging — or recurring byproducts like metal scrap, cow dung and used cooking oil. Connect with nearby businesses and farms instead of sending it to waste.</p>
+    </div>
+    <!-- Small decorative illustration (desktop only) — no real photo asset exists for this banner
+         yet, so this is a simple inline SVG in the same restrained style as the rest of the site,
+         not a stand-in for a missing real photo the way the hero art was. -->
+    <div class="business-teaser-art" aria-hidden="true">
+      <svg viewBox="0 0 120 100" xmlns="http://www.w3.org/2000/svg">
+        <rect x="8" y="46" width="46" height="40" rx="4" fill="rgba(255,255,255,.14)"/>
+        <path d="M8 46l23-14 23 14" fill="none" stroke="rgba(255,255,255,.35)" stroke-width="3" stroke-linejoin="round"/>
+        <line x1="31" y1="46" x2="31" y2="86" stroke="rgba(255,255,255,.25)" stroke-width="2"/>
+        <line x1="8" y1="66" x2="54" y2="66" stroke="rgba(255,255,255,.25)" stroke-width="2"/>
+        <rect x="66" y="30" width="30" height="56" rx="6" fill="rgba(255,255,255,.1)"/>
+        <circle cx="81" cy="46" r="9" fill="none" stroke="var(--pop)" stroke-width="3"/>
+        <path d="M72 70h18M72 78h12" stroke="rgba(255,255,255,.3)" stroke-width="3" stroke-linecap="round"/>
+      </svg>
     </div>
     <button class="btn-light" id="businessTeaserBtn">Explore Business Surplus</button>
   </div>`;
@@ -567,6 +582,23 @@ function bindTopBar() {
     state.sort = e.target.value;
     state.section === 'requests' ? loadRequests() : loadItems();
   };
+  // Explicit "Search" button next to Filters — the input already live-filters via oninput above;
+  // this just gives an obvious click target (matches the reference) and jumps straight to results.
+  const heroSearchBtn = $('#heroSearchBtn');
+  if (heroSearchBtn) heroSearchBtn.onclick = () => {
+    state.q = $('#search').value;
+    state.section === 'requests' ? loadRequests() : loadItems();
+    document.querySelector('.page-layout')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
+  // Hero "Popular:" quick-category shortcuts — same category filter as the sidebar/quick-row,
+  // just reachable straight from the hero.
+  document.querySelectorAll('.hero-popular-link').forEach(btn => btn.onclick = () => {
+    state.category = btn.dataset.cat;
+    renderCategories();
+    renderQuickCategories();
+    loadItems();
+    document.querySelector('.page-layout')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  });
 }
 
 // ---------- mobile bottom navigation + Post action sheet (nav redesign Stage 2) ----------
@@ -1054,16 +1086,19 @@ async function loadMonthlyBadges() {
   } catch (e) { /* non-critical */ }
 }
 
+// Icons are Lucide (one family, one stroke) instead of medal/food emoji — the theme-* class on
+// .champion-box (already gold/silver/bronze tinted) is what carries the rank meaning now, via
+// the champion-rank-icon's color, rather than a 🥇🥈🥉 glyph.
 const CHAMPION_KINDS = [
-  { key: 'food_giver', rank: '🥇', theme: 'gold', icon: '🍲', title: 'Top Food Giver', emptyMsg: 'Be the first to rescue surplus food this month.' },
-  { key: 'reuse_donor', rank: '🥈', theme: 'silver', icon: '♻️', title: 'Top Reuse Donor', emptyMsg: 'Be the first to give an item a second life this month.' },
-  { key: 'community_champion', rank: '🥉', theme: 'bronze', icon: '🌱', title: 'Community Champion', emptyMsg: 'Start making an impact today and inspire others.' }
+  { key: 'food_giver', theme: 'gold', icon: 'soup', title: 'Top Food Giver', emptyMsg: 'Be the first to rescue surplus food this month.' },
+  { key: 'reuse_donor', theme: 'silver', icon: 'recycle', title: 'Top Reuse Donor', emptyMsg: 'Be the first to give an item a second life this month.' },
+  { key: 'community_champion', theme: 'bronze', icon: 'sprout', title: 'Community Champion', emptyMsg: 'Start making an impact today and inspire others.' }
 ];
 
 function championBoxHtml(kind, entry) {
   return `<div class="champion-box theme-${kind.theme}">
-    <div class="champion-rank">${kind.rank}</div>
-    <div class="champion-icon-wrap"><span class="champion-icon">${kind.icon}</span></div>
+    <div class="champion-rank"><i data-lucide="award" class="champion-rank-icon"></i></div>
+    <div class="champion-icon-wrap"><i data-lucide="${kind.icon}" class="champion-icon"></i></div>
     <div class="champion-title">${kind.title}</div>
     <div class="champion-name">${entry ? escapeHtml(entry.name) + (entry.account_type === 'business' ? ' <span class="owner-badge">Business</span>' : '') : 'No champion yet'}</div>
     <div class="champion-sub">${entry ? `${entry.count} completed this month` : kind.emptyMsg}</div>
