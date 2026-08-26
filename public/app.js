@@ -220,12 +220,13 @@ async function loadUrgentRequests() {
   if (!items.length) { el.innerHTML = ''; return; }
   const shown = items.slice(0, 3);
   el.innerHTML = `<div class="highlight-wrap hl-urgent">
-    <h2>🤝 People asking for help ${items.length > 3 ? `<button class="view-all-link" id="urgentViewAll">View all (${items.length}) →</button>` : ''}</h2>
+    <h2><i data-lucide="hand-heart" class="section-icon"></i> People asking for help ${items.length > 3 ? `<button class="view-all-link" id="urgentViewAll">View all (${items.length}) →</button>` : ''}</h2>
     <p class="highlight-sub">People who need help right now — respond if you can.</p>
     <div class="grid hscroll">${shown.map(requestCardHtml).join('')}</div>
   </div>`;
   el.querySelectorAll('.card').forEach(c => c.onclick = () => openRequestDetail(c.dataset.id));
   if ($('#urgentViewAll')) $('#urgentViewAll').onclick = () => openUrgentAllModal(items);
+  if (window.lucide) lucide.createIcons();
 }
 
 // Dedicated "Service requests" discovery strip — distinct from item requests (electrician,
@@ -241,16 +242,18 @@ async function loadServiceRequestsPreview() {
   if (!items.length) { el.innerHTML = ''; return; }
   const shown = items.slice(0, 3);
   el.innerHTML = `<div class="highlight-wrap hl-service">
-    <h2>🔧 Services people need ${items.length > 3 ? `<button class="view-all-link" id="serviceReqViewAll">View all (${items.length}) →</button>` : ''}</h2>
+    <h2><i data-lucide="wrench" class="section-icon"></i> Services people need ${items.length > 3 ? `<button class="view-all-link" id="serviceReqViewAll">View all (${items.length}) →</button>` : ''}</h2>
     <p class="highlight-sub">Electrician, plumber, carpenter and more — offer your help nearby.</p>
     <div class="grid hscroll">${shown.map(requestCardHtml).join('')}</div>
   </div>`;
   el.querySelectorAll('.card').forEach(c => c.onclick = () => openRequestDetail(c.dataset.id));
   if ($('#serviceReqViewAll')) $('#serviceReqViewAll').onclick = () => openServiceRequestsAllModal(items);
+  if (window.lucide) lucide.createIcons();
 }
 function openServiceRequestsAllModal(items) {
-  showModal(`<h2>🔧 All service requests</h2><div class="grid" style="margin-top:14px">${items.map(requestCardHtml).join('')}</div>`);
+  showModal(`<h2><i data-lucide="wrench" class="section-icon"></i> All service requests</h2><div class="grid" style="margin-top:14px">${items.map(requestCardHtml).join('')}</div>`);
   modalRoot.querySelectorAll('.card').forEach(c => c.onclick = () => { closeModal(); openRequestDetail(c.dataset.id); });
+  if (window.lucide) lucide.createIcons();
 }
 
 async function loadUrgentFood() {
@@ -261,13 +264,14 @@ async function loadUrgentFood() {
   if (!items.length) { el.innerHTML = ''; return; }
   const shown = items.slice(0, 3);
   el.innerHTML = `<div class="highlight-wrap hl-urgent">
-    <h2>🔥 Urgent Food Rescue ${items.length > 3 ? `<button class="view-all-link" id="urgentFoodViewAll">View all (${items.length}) →</button>` : ''}</h2>
+    <h2><i data-lucide="flame" class="section-icon"></i> Urgent Food Rescue ${items.length > 3 ? `<button class="view-all-link" id="urgentFoodViewAll">View all (${items.length}) →</button>` : ''}</h2>
     <p class="highlight-sub">Surplus food that needs to find a home soon.</p>
     <div class="grid hscroll">${shown.map(cardHtml).join('')}</div>
   </div>`;
   el.querySelectorAll('.card').forEach(c => c.onclick = () => openDetail(c.dataset.id));
   bindWishlistButtons(el);
   if ($('#urgentFoodViewAll')) $('#urgentFoodViewAll').onclick = () => openUrgentFoodAllModal(items);
+  if (window.lucide) lucide.createIcons();
 }
 
 // Business Surplus page intro + its own urgent highlight — deliberately NOT a homepage strip
@@ -359,7 +363,8 @@ async function loadCollections() {
       </div>`;
     }).filter(Boolean).join('');
     if (!cards) { el.innerHTML = ''; return; }
-    el.innerHTML = `<div class="section-head"><h2>🎁 Popular collections</h2></div><div class="collections-grid">${cards}</div>`;
+    el.innerHTML = `<div class="section-head"><h2><i data-lucide="gift" class="section-icon"></i> Popular collections</h2></div><div class="collections-grid">${cards}</div>`;
+    if (window.lucide) lucide.createIcons();
     el.querySelectorAll('.mini-thumb').forEach(t => t.onclick = () => openDetail(t.dataset.id));
     el.querySelectorAll('[data-cat]').forEach(btn => btn.onclick = () => {
       state.category = btn.dataset.cat;
@@ -406,7 +411,7 @@ function loadBusinessTeaser() {
   if (state.section === 'business_waste') { el.innerHTML = ''; return; }
   el.innerHTML = `<div class="business-teaser">
     <div>
-      <h2>🏭 Have business surplus to give away?</h2>
+      <h2><i data-lucide="factory" class="section-icon"></i> Have business surplus to give away?</h2>
       <p>Office furniture, equipment, electronics and packaging — or recurring byproducts like metal scrap, cow dung and used cooking oil. Connect with nearby businesses and farms instead of sending it to waste.</p>
     </div>
     <button class="btn-light" id="businessTeaserBtn">Explore Business Surplus</button>
@@ -415,6 +420,7 @@ function loadBusinessTeaser() {
     document.querySelector('.section-tab[data-section="business_waste"]').click();
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
+  if (window.lucide) lucide.createIcons();
 }
 
 // Compact sidebar Business Surplus card — additive to (not a replacement for) the larger
@@ -480,7 +486,7 @@ async function loadTrending() {
     return;
   }
   el.innerHTML = `<div class="trending-wrap">
-    <h2>🔥 Trending near you</h2>
+    <h2><i data-lucide="flame" class="section-icon"></i> Trending near you</h2>
     <p class="highlight-sub">Popular items people are viewing and claiming nearby.</p>
     <div class="trend-tabs">${TREND_TABS.map((t, i) => `<button class="trend-tab${i === 0 ? ' active' : ''}" data-tab="${t.key}">${t.label}</button>`).join('')}</div>
     <div class="grid" id="trendGrid"></div>
@@ -489,6 +495,7 @@ async function loadTrending() {
     el.querySelectorAll('.trend-tab').forEach(b => b.classList.toggle('active', b === btn));
     loadTrendTab(btn.dataset.tab);
   });
+  if (window.lucide) lucide.createIcons();
   const grid = $('#trendGrid');
   // Homepage preview caps at 6 (matches the fixed 6-column desktop grid so the row is always
   // full, not dependent on however many items happen to have request_count > 0 right now).
@@ -1043,6 +1050,7 @@ async function loadMonthlyBadges() {
     el.innerHTML = championsSectionHtml(badges);
     const btn = $('#viewAllContributorsBtn');
     if (btn) btn.onclick = () => openContributorsModal();
+    if (window.lucide) lucide.createIcons();
   } catch (e) { /* non-critical */ }
 }
 
@@ -1067,10 +1075,10 @@ function championsSectionHtml(badges) {
   return `
     <div class="champions-top">
       <div>
-        <div class="champions-head">🏆 Monthly Community Champions</div>
+        <div class="champions-head"><i data-lucide="trophy" class="section-icon"></i> Monthly Community Champions</div>
         <div class="champions-sub">Recognizing the people making the biggest impact this month.</div>
       </div>
-      <div class="champions-month">📅 ${escapeHtml(badges.month)}</div>
+      <div class="champions-month"><i data-lucide="calendar" style="width:13px;height:13px"></i> ${escapeHtml(badges.month)}</div>
     </div>
     <div class="champions-grid">
       ${CHAMPION_KINDS.map(k => championBoxHtml(k, badges[k.key])).join('')}
@@ -1081,7 +1089,8 @@ function championsSectionHtml(badges) {
 }
 
 async function openContributorsModal() {
-  showModal(`<h2>🏆 Contributors this month</h2><div id="contributorsList">Loading...</div>`);
+  showModal(`<h2><i data-lucide="trophy" class="section-icon"></i> Contributors this month</h2><div id="contributorsList">Loading...</div>`);
+  if (window.lucide) lucide.createIcons();
   try {
     const badges = await api('/api/badges/monthly');
     const list = badges.leaderboard || [];
