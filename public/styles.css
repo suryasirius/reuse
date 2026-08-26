@@ -4,7 +4,7 @@
   --pop:#B8E84E; --pop-ink:#0B4D2C;
   --accent:#2E5F44; --accent-dark:#1E4530;
   --bg:#F7FAF8; --card:#fff;
-  --text:#1B1F23; --muted:#6B7280; --muted-2:#9aa39c; --meta:#565f58; --border:#E9EEF1; --border-soft:#eef1ec;
+  --text:#1B1F23; --muted:#6B7280; --muted-2:#9aa39c; --meta:#4a534d; --border:#E9EEF1; --border-soft:#eef1ec;
   --orange:#e07a2b; --blue:#2b6ae0; --danger:#d64545; --warning:#b8860b;
   --dark-panel:#0B4D2C; --dark-panel-2:#14643D;
   --shadow-xs:0 1px 2px rgba(20,30,20,.05);
@@ -528,7 +528,7 @@ main{max-width:1800px;width:calc(100vw - 64px);margin:0 auto;padding:14px 12px 6
 .sidebar .chip{
   display:flex;width:100%;text-align:left;align-items:center;gap:9px;justify-content:flex-start;
   border-radius:14px;border-color:transparent;background:transparent;padding:9px 10px;
-  font-weight:600;color:#3d4a41;
+  font-weight:500;color:var(--muted);
 }
 .sidebar .chip .cat-icon{display:inline-flex;color:var(--muted-2);flex-shrink:0}
 .sidebar .chip .cat-icon [data-lucide]{width:15px;height:15px}
@@ -542,7 +542,10 @@ main{max-width:1800px;width:calc(100vw - 64px);margin:0 auto;padding:14px 12px 6
 /* ---------- eco impact panel (right sidebar) ---------- */
 .eco-panel{
   width:100%;flex-shrink:0;
-  background:linear-gradient(180deg,var(--accent),#3A7A56);border-radius:var(--radius-lg);
+  /* Slightly less saturated than the original bright-green gradient — same layout/content/width,
+     just a touch more neutral-dark so it reads as a supporting sidebar, not the loudest thing
+     on the page next to the (also-green) hero and Trending. */
+  background:linear-gradient(180deg,#2B4E3D,#365E4A);border-radius:var(--radius-lg);
   padding:20px 16px;color:#fff;box-shadow:0 10px 30px rgba(0,0,0,.05);
 }
 /* ---- Marketplace two-column layout: main browsing column + persistent right sidebar
@@ -666,10 +669,10 @@ main{max-width:1800px;width:calc(100vw - 64px);margin:0 auto;padding:14px 12px 6
 .searchbar .primary-btn{white-space:nowrap}
 
 /* ---------- grid / cards: v2.0 spec — price badge top-left, wishlist heart top-right ---------- */
-.content-title{font-size:16px;font-weight:800;margin:0 0 14px}
+.content-title{font-size:20px;font-weight:700;margin:0 0 14px;color:var(--text)}
 .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:20px}
 .card{
-  background:#fff;border:1px solid var(--border-soft);border-radius:22px;padding:12px;
+  background:#fff;border:1px solid var(--border-soft);border-radius:22px;padding:17px;
   overflow:visible;cursor:pointer;
   box-shadow:0 10px 30px rgba(0,0,0,.05);
   transition:transform .3s var(--ease), box-shadow .3s var(--ease);
@@ -677,7 +680,7 @@ main{max-width:1800px;width:calc(100vw - 64px);margin:0 auto;padding:14px 12px 6
 }
 .card:hover{transform:translateY(-6px);box-shadow:0 22px 50px rgba(0,0,0,.1)}
 .card .thumb{
-  width:100%;height:230px;position:relative;border-radius:16px;overflow:hidden;margin-bottom:12px;
+  width:100%;aspect-ratio:4/3;height:auto;position:relative;border-radius:14px;overflow:hidden;margin-bottom:14px;
   background:linear-gradient(135deg,#eef6f0,#f4f8f5);
   display:flex;align-items:center;justify-content:center;
 }
@@ -700,7 +703,7 @@ main{max-width:1800px;width:calc(100vw - 64px);margin:0 auto;padding:14px 12px 6
 .card .wishlist-btn:active{transform:scale(.9)}
 .card .wishlist-btn svg{width:17px;height:17px;stroke:#1B1F23;fill:none;transition:fill .15s, stroke .15s}
 .card .wishlist-btn.active svg{fill:#f43f5e;stroke:#f43f5e}
-.card h3{margin:0 0 4px;font-size:15px;font-weight:600;line-height:1.3;letter-spacing:-.005em;color:#111827;transition:color .15s}
+.card h3{margin:0 0 4px;font-size:16px;font-weight:700;line-height:1.3;letter-spacing:-.005em;color:#111827;transition:color .15s}
 .card:hover h3{color:var(--brand)}
 .card .meta{margin:0 0 12px;font-size:12.5px;font-weight:500;color:var(--meta);display:flex;align-items:center;gap:4px;flex-wrap:wrap}
 .card .meta .owner-name{font-weight:500;color:var(--meta);display:inline-flex;align-items:center;gap:3px}
@@ -799,9 +802,9 @@ main{max-width:1800px;width:calc(100vw - 64px);margin:0 auto;padding:14px 12px 6
    to a second row; falls back to fewer columns as the viewport narrows. */
 .trending-wrap .grid{grid-template-columns:repeat(6,minmax(0,1fr));gap:14px;align-items:stretch}
 .trending-wrap .card{height:100%;padding:20px}
-.trending-wrap .card .thumb{height:170px;margin-bottom:16px}
+.trending-wrap .card .thumb{aspect-ratio:4/3;height:auto;margin-bottom:16px}
 .trending-wrap .card h3{
-  font-size:15px;
+  font-size:16px;
   display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;
 }
 @media (max-width:1650px){.trending-wrap .grid{grid-template-columns:repeat(5,1fr)}}
@@ -985,6 +988,50 @@ form button[disabled], .primary-btn[disabled]{opacity:.6;cursor:not-allowed;tran
 }
 .gallery{display:flex;gap:8px;overflow-x:auto;margin-bottom:14px;border-radius:var(--radius-md)}
 .gallery img, .gallery video{height:150px;border-radius:var(--radius-sm);flex-shrink:0}
+
+/* ---------- image lightbox: click a gallery photo -> full view + zoom + next/prev + thumbs.
+   Always the real uploaded file at full resolution, never a generated replacement. ---------- */
+.lightbox-overlay{
+  position:fixed;inset:0;z-index:90;background:rgba(10,14,11,.92);
+  display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px;
+  animation:fadeIn .15s var(--ease);
+}
+.lightbox-stage{flex:1;width:100%;display:flex;align-items:center;justify-content:center;min-height:0;overflow:hidden}
+.lightbox-img{
+  max-width:100%;max-height:100%;object-fit:contain;border-radius:8px;cursor:zoom-in;
+  transition:transform .2s var(--ease);
+}
+.lightbox-img.zoomed{transform:scale(1.9);cursor:zoom-out}
+.lightbox-close{
+  position:absolute;top:20px;right:20px;width:40px;height:40px;border-radius:50%;
+  background:rgba(255,255,255,.12);border:none;color:#fff;display:flex;align-items:center;justify-content:center;
+  cursor:pointer;transition:background .15s;
+}
+.lightbox-close:hover{background:rgba(255,255,255,.22)}
+.lightbox-close [data-lucide]{width:20px;height:20px}
+.lightbox-nav{
+  position:absolute;top:50%;transform:translateY(-50%);width:44px;height:44px;border-radius:50%;
+  background:rgba(255,255,255,.12);border:none;color:#fff;display:flex;align-items:center;justify-content:center;
+  cursor:pointer;transition:background .15s;
+}
+.lightbox-nav:hover{background:rgba(255,255,255,.22)}
+.lightbox-prev{left:16px}
+.lightbox-next{right:16px}
+.lightbox-nav [data-lucide]{width:22px;height:22px}
+.lightbox-thumbs{display:flex;gap:8px;margin-top:16px;overflow-x:auto;max-width:100%;padding-bottom:4px}
+.lightbox-thumb{
+  flex-shrink:0;width:56px;height:56px;border-radius:8px;overflow:hidden;padding:0;
+  border:2px solid transparent;opacity:.55;cursor:pointer;background:none;transition:opacity .15s, border-color .15s;
+}
+.lightbox-thumb img{width:100%;height:100%;object-fit:cover;display:block}
+.lightbox-thumb:hover{opacity:.85}
+.lightbox-thumb.active{opacity:1;border-color:var(--pop)}
+@media (max-width:600px){
+  .lightbox-overlay{padding:12px}
+  .lightbox-nav{width:38px;height:38px}
+  .lightbox-nav [data-lucide]{width:18px;height:18px}
+  .lightbox-thumb{width:44px;height:44px}
+}
 
 /* ---------- tabs (dashboards) ---------- */
 .tabs{display:flex;gap:6px;margin-bottom:16px;flex-wrap:wrap}

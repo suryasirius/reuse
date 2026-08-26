@@ -17,8 +17,54 @@ const SECTION_HINTS = {
 
 const $ = sel => document.querySelector(sel);
 const modalRoot = $('#modalRoot');
+const lightboxRoot = $('#lightboxRoot');
 
 function closeModal() { modalRoot.innerHTML = ''; }
+
+// ---------- image lightbox (click a gallery photo -> full view, zoom toggle, next/prev,
+// thumbnail strip) — layers above the regular modal, only ever shows real uploaded photos
+// (never generated/replaced), and never touches the original files. ----------
+let lightboxImages = [];
+let lightboxIndex = 0;
+function closeLightbox() { lightboxRoot.innerHTML = ''; document.removeEventListener('keydown', lightboxKeyHandler); }
+function lightboxKeyHandler(e) {
+  if (e.key === 'Escape') closeLightbox();
+  else if (e.key === 'ArrowRight') lightboxGo(1);
+  else if (e.key === 'ArrowLeft') lightboxGo(-1);
+}
+function lightboxGo(delta) {
+  lightboxIndex = (lightboxIndex + delta + lightboxImages.length) % lightboxImages.length;
+  renderLightbox();
+}
+function renderLightbox() {
+  const total = lightboxImages.length;
+  lightboxRoot.innerHTML = `<div class="lightbox-overlay" id="lightboxOverlay">
+    <button type="button" class="lightbox-close" id="lightboxClose" aria-label="Close"><i data-lucide="x"></i></button>
+    ${total > 1 ? `<button type="button" class="lightbox-nav lightbox-prev" id="lightboxPrev" aria-label="Previous"><i data-lucide="chevron-left"></i></button>` : ''}
+    <div class="lightbox-stage">
+      <img src="${lightboxImages[lightboxIndex].url}" class="lightbox-img" id="lightboxImg">
+    </div>
+    ${total > 1 ? `<button type="button" class="lightbox-nav lightbox-next" id="lightboxNext" aria-label="Next"><i data-lucide="chevron-right"></i></button>` : ''}
+    ${total > 1 ? `<div class="lightbox-thumbs">${lightboxImages.map((m, i) => `<button type="button" class="lightbox-thumb${i === lightboxIndex ? ' active' : ''}" data-i="${i}"><img src="${m.url}"></button>`).join('')}</div>` : ''}
+  </div>`;
+  $('#lightboxOverlay').onclick = (e) => { if (e.target.id === 'lightboxOverlay') closeLightbox(); };
+  $('#lightboxClose').onclick = closeLightbox;
+  if (total > 1) {
+    $('#lightboxPrev').onclick = () => lightboxGo(-1);
+    $('#lightboxNext').onclick = () => lightboxGo(1);
+    lightboxRoot.querySelectorAll('.lightbox-thumb').forEach(t => t.onclick = () => { lightboxIndex = +t.dataset.i; renderLightbox(); });
+  }
+  const img = $('#lightboxImg');
+  img.onclick = () => img.classList.toggle('zoomed');
+  if (window.lucide) lucide.createIcons();
+}
+function openLightbox(images, startIndex) {
+  if (!images || !images.length) return;
+  lightboxImages = images;
+  lightboxIndex = startIndex || 0;
+  renderLightbox();
+  document.addEventListener('keydown', lightboxKeyHandler);
+}
 
 function showModal(html) {
   modalRoot.innerHTML = `<div class="modal-overlay" id="overlay"><div class="modal">
@@ -2017,6 +2063,11 @@ async function openDetail(id) {
     const reportLink = $('#reportLink');
     if (reportLink) reportLink.onclick = (e) => { e.preventDefault(); openReportModal('item', item.id); };
   }
+  // Wire the gallery strip up to the lightbox — real uploaded photos only (videos in .gallery
+  // render as <video>, not <img>, so they're naturally excluded here).
+  const media = (item.media && item.media.length) ? item.media : (item.media_url ? [{ url: item.media_url, media_type: item.media_type }] : []);
+  const galleryImages = media.filter(m => m.media_type !== 'video');
+  modalRoot.querySelectorAll('.gallery img').forEach((img, i) => { img.onclick = () => openLightbox(galleryImages, i); img.style.cursor = 'zoom-in'; });
   bindCopyButtons();
 }
 
