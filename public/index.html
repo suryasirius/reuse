@@ -165,21 +165,42 @@
         </div>
       </div>
     </div>
-    <aside class="marketplace-aside">
-      <div class="eco-panel" id="ecoPanel">
-        <div class="eco-head"><i data-lucide="globe"></i> Impact Tracker</div>
-        <div class="eco-stats" id="ecoStats"></div>
-        <button type="button" class="eco-view-full-btn" id="ecoViewFullBtn">View Full Impact</button>
-        <div class="eco-earth">
-          <div class="eco-earth-icon">🌍</div>
-          <p>Building a circular economy, one item at a time.</p>
-        </div>
-        <div id="ecoExtra"></div>
-        <div id="ecoNearby"></div>
-      </div>
-      <div id="businessAsideCard"></div>
-    </aside>
   </div>
+
+  <!-- Business Surplus compact promo card: moved out of the old .marketplace-aside sidebar column
+       (removed below) into its own full-width slot in the same reading-order position. Same id,
+       same loadBusinessAsideCard() JS, same .business-aside-card content/styling — only its outer
+       container changed from a 240px-wide sidebar slot to a full-width block, which is an
+       unavoidable side effect of removing that sidebar (see Impact Tracker note below), not a
+       redesign of this card itself. -->
+  <div id="businessAsideCard"></div>
+
+  <!-- Impact Tracker: collapsed edge tab + slide-out overlay panel, replacing the old permanent
+       240px .marketplace-aside sidebar column so the marketplace grid above gets full width by
+       default. #ecoPanel's markup/content below is byte-for-byte the same as it was in the sidebar
+       (same ids, same structure) — only its outer presentation changed from "always-visible sidebar
+       column" to "closed by default, slides in as an overlay on click." A direct child of <main>
+       like the other homepage sections, so it automatically hides/shows together with the rest of
+       the homepage when My Posts opens/closes (existing generic toggle in app.js, untouched). -->
+  <button type="button" class="impact-tab" id="impactTabBtn" aria-haspopup="true" aria-expanded="false" aria-label="Open Impact Tracker">
+    <i data-lucide="leaf"></i>
+    <span class="impact-tab-label">Impact</span>
+  </button>
+  <div class="impact-panel-overlay" id="impactPanelOverlay"></div>
+  <aside class="impact-panel" id="impactPanel" aria-hidden="true">
+    <button type="button" class="impact-panel-close" id="impactPanelCloseBtn" aria-label="Close Impact Tracker"><i data-lucide="x"></i></button>
+    <div class="eco-panel" id="ecoPanel">
+      <div class="eco-head"><i data-lucide="globe"></i> Impact Tracker</div>
+      <div class="eco-stats" id="ecoStats"></div>
+      <button type="button" class="eco-view-full-btn" id="ecoViewFullBtn">View Full Impact</button>
+      <div class="eco-earth">
+        <div class="eco-earth-icon">🌍</div>
+        <p>Building a circular economy, one item at a time.</p>
+      </div>
+      <div id="ecoExtra"></div>
+      <div id="ecoNearby"></div>
+    </div>
+  </aside>
 
   <div id="businessTeaserPreviewSection" class="homepage-section mobile-only-section"></div>
   <div id="businessSurplusIntro" class="homepage-section"></div>
@@ -203,6 +224,52 @@
     <div class="trust-card">
       <span class="trust-icon"><i data-lucide="leaf"></i></span>
       <div><h4>100% Sustainable</h4><p>Reduce landfill waste and lower carbon footprint together.</p></div>
+    </div>
+  </div>
+
+  <!-- My Posts full-page dashboard. A section INSIDE <main>, sibling to the homepage content above
+       (not a separate top-level element) — this guarantees header -> main -> footer document order
+       is always correct, since the footer is a sibling of <main>, never of this section. Hidden by
+       default; openMyPosts()/closeMyPostsPage() in app.js toggle which of main's direct children
+       are visible. Header and footer are shared/global and are never duplicated for this feature. -->
+  <div id="myPostsPage" class="my-posts-page" style="display:none">
+    <div class="my-posts-inner">
+      <button type="button" class="my-posts-back" id="myPostsBackBtn"><i data-lucide="arrow-left"></i> Back to Give &amp; Take</button>
+      <div class="my-posts-head">
+        <div>
+          <h1>My Posts</h1>
+          <p class="my-posts-subtitle">Manage the items, requests, and services you've shared with the community.</p>
+        </div>
+        <button type="button" class="primary-btn my-posts-post-btn" id="myPostsPostBtn"><i data-lucide="plus"></i> Post an item</button>
+      </div>
+
+      <div class="my-posts-stats" id="myPostsStats"></div>
+
+      <div class="my-posts-tabs" id="myPostsTabs">
+        <button type="button" class="my-posts-tab active" data-tab="all">All</button>
+        <button type="button" class="my-posts-tab" data-tab="items">Items</button>
+        <button type="button" class="my-posts-tab" data-tab="requests">Requests</button>
+        <button type="button" class="my-posts-tab" data-tab="services">Services</button>
+      </div>
+
+      <div class="my-posts-toolbar">
+        <div class="my-posts-search">
+          <i data-lucide="search"></i>
+          <input type="text" id="myPostsSearch" placeholder="Search your posts...">
+        </div>
+        <select id="myPostsStatusFilter">
+          <option value="">Status</option>
+          <option value="available">Active</option>
+          <option value="claimed">Claimed</option>
+          <option value="closed">Completed</option>
+        </select>
+        <select id="myPostsCategoryFilter">
+          <option value="">Category</option>
+        </select>
+      </div>
+
+      <div id="myPostsGrid" class="my-posts-grid"></div>
+      <div id="myPostsEmpty" class="my-posts-empty" style="display:none"></div>
     </div>
   </div>
 </main>
@@ -241,50 +308,6 @@
   </div>
   <div class="footer-bottom">© 2026 ReUse Hub. Building a circular economy, one item at a time.</div>
 </footer>
-
-<!-- My Posts full-page dashboard. Hidden by default; toggled by openMyPosts()/closeMyPostsPage()
-     in app.js which show/hide this and <main> together. Header and footer above/below are shared
-     with the homepage and are never duplicated or modified for this feature. -->
-<div id="myPostsPage" class="my-posts-page" style="display:none">
-  <div class="my-posts-inner">
-    <button type="button" class="my-posts-back" id="myPostsBackBtn"><i data-lucide="arrow-left"></i> Back to Give &amp; Take</button>
-    <div class="my-posts-head">
-      <div>
-        <h1>My Posts</h1>
-        <p class="my-posts-subtitle">Manage the items, requests, and services you've shared with the community.</p>
-      </div>
-      <button type="button" class="primary-btn my-posts-post-btn" id="myPostsPostBtn"><i data-lucide="plus"></i> Post an item</button>
-    </div>
-
-    <div class="my-posts-stats" id="myPostsStats"></div>
-
-    <div class="my-posts-tabs" id="myPostsTabs">
-      <button type="button" class="my-posts-tab active" data-tab="all">All</button>
-      <button type="button" class="my-posts-tab" data-tab="items">Items</button>
-      <button type="button" class="my-posts-tab" data-tab="requests">Requests</button>
-      <button type="button" class="my-posts-tab" data-tab="services">Services</button>
-    </div>
-
-    <div class="my-posts-toolbar">
-      <div class="my-posts-search">
-        <i data-lucide="search"></i>
-        <input type="text" id="myPostsSearch" placeholder="Search your posts...">
-      </div>
-      <select id="myPostsStatusFilter">
-        <option value="">Status</option>
-        <option value="available">Active</option>
-        <option value="claimed">Claimed</option>
-        <option value="closed">Completed</option>
-      </select>
-      <select id="myPostsCategoryFilter">
-        <option value="">Category</option>
-      </select>
-    </div>
-
-    <div id="myPostsGrid" class="my-posts-grid"></div>
-    <div id="myPostsEmpty" class="my-posts-empty" style="display:none"></div>
-  </div>
-</div>
 
 <!-- Mobile bottom navigation (nav redesign Stage 2). Desktop keeps the existing header nav
      untouched — this is shown only at the mobile breakpoint via .mobile-only-section. -->

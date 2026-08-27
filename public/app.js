@@ -114,6 +114,7 @@ async function init() {
   loadStatsStrip();
   loadNearbyActivity();
   bindNearbySection();
+  bindImpactPanel();
   initHeroCarousel();
   loadMonthlyBadges();
   if (state.user) refreshNotifCount();
@@ -200,6 +201,10 @@ async function loadStatsStrip() {
 
 function bindSectionTabs() {
   document.querySelectorAll('.section-tab').forEach(btn => btn.onclick = () => {
+    // Global-nav safety: Give & Take / Business Surplus / Requests are homepage sections, not
+    // separate pages, so if My Posts is currently showing, restore the homepage first — otherwise
+    // this would silently update DOM the user can't see instead of visibly navigating anywhere.
+    ensureHomepageVisible();
     state.section = btn.dataset.section;
     state.category = ''; state.priceType = ''; state.q = ''; state.urgentOnly = false; state.sort = '';
     $('#search').value = '';
@@ -697,6 +702,11 @@ function bindBottomNav() {
   if (!bottomNav) return;
 
   $('#bnHomeBtn').onclick = () => {
+    // ensureHomepageVisible() runs unconditionally here (not just inside the tab's own click
+    // handler below) because when the consumer tab is already marked active — the common case,
+    // since My Posts doesn't change section-tab state — the guarded .click() below never fires,
+    // so nothing would otherwise restore the homepage if the user is on My Posts.
+    ensureHomepageVisible();
     const consumerTab = document.querySelector('.section-tab[data-section="consumer"]');
     if (consumerTab && !consumerTab.classList.contains('active')) consumerTab.click();
     setMobileView('home');
@@ -704,6 +714,7 @@ function bindBottomNav() {
     setBottomNavActive('home');
   };
   $('#bnBrowseBtn').onclick = () => {
+    ensureHomepageVisible();
     const consumerTab = document.querySelector('.section-tab[data-section="consumer"]');
     if (consumerTab && !consumerTab.classList.contains('active')) consumerTab.click();
     setMobileView('browse');
@@ -797,7 +808,10 @@ function moreMenuItemsHtml() {
   `;
   return `<div class="more-menu-groups">${groups}</div>${impactCta}`;
 }
-const scrollToSel = (sel) => { const el = document.querySelector(sel); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' }); };
+// Every More-menu shortcut below jumps to a homepage section; if My Posts is open that section is
+// currently hidden, so restore the homepage first (see ensureHomepageVisible) instead of calling
+// scrollIntoView on a display:none element, which succeeds silently but visibly does nothing.
+const scrollToSel = (sel) => { ensureHomepageVisible(); const el = document.querySelector(sel); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' }); };
 const MORE_ACTIONS = {
   categories: () => scrollToSel('.page-layout'),
   business: () => { const tab = document.querySelector('.section-tab[data-section="business_waste"]'); if (tab) tab.click(); window.scrollTo({ top: 0, behavior: 'smooth' }); },
@@ -864,8 +878,9 @@ function debounce(fn, ms) { let t; return (...a) => { clearTimeout(t); t = setTi
 
 // Header account cluster (avatar + name + chevron) opens a small dropdown for Log out (and Admin,
 // for admins) instead of a permanently-visible "Log out" pill — My posts/Activity/notifications
-// stay directly visible/lightweight. The trailing "⋮" overflow control opens the same dropdown
-// (not a second, different menu) — a real, functioning shortcut rather than a decorative icon.
+// stay directly visible/lightweight. There is deliberately no separate "⋮" overflow control here
+// (removed) — it used to open this exact same one-item dropdown, which made it a redundant second
+// way to reach Log out rather than a real shortcut.
 function renderNav() {
   const nav = $('#nav');
   if (state.user) {
@@ -887,8 +902,7 @@ function renderNav() {
           ${state.user.is_admin ? '<button type="button" role="menuitem" id="adminBtn"><i data-lucide="shield"></i> Admin</button>' : ''}
           <button type="button" role="menuitem" id="logoutBtn" class="danger"><i data-lucide="log-out"></i> Log out</button>
         </div>
-      </div>
-      <button type="button" class="header-overflow-btn" id="headerOverflowBtn" aria-label="More account options"><i data-lucide="more-vertical"></i></button>`;
+      </div>`;
     $('#notifBtn').onclick = (e) => { e.stopPropagation(); toggleNotifPanel(); };
     $('#myItemsBtn').onclick = () => openMyPosts();
     $('#activityBtn').onclick = () => openActivity();
@@ -902,7 +916,8 @@ function renderNav() {
       userChipBtn.setAttribute('aria-expanded', String(willOpen));
     };
     userChipBtn.onclick = toggleUserMenu;
-    $('#headerOverflowBtn').onclick = toggleUserMenu;
+    // Profile dropdown's outside-click/Escape-to-close behavior is unchanged — it was never
+    // specific to the removed overflow button, it belongs to the dropdown itself.
     document.addEventListener('click', (e) => { if (!e.target.closest('#userMenuWrap')) closeUserMenu(); });
     document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeUserMenu(); });
     if (state.user.is_admin) $('#adminBtn').onclick = () => { closeUserMenu(); openAdminDashboard(); };
@@ -1114,6 +1129,36 @@ function bindNearbySection() {
       setTimeout(() => locInput && locInput.focus(), 400);
     }
   };
+}
+
+// ---------- Impact Tracker collapsed tab + slide-out panel ----------
+// Content/data inside (#ecoPanel, populated by loadEcoPanel()) is completely unchanged — this only
+// wires the open/close chrome around it: click the edge tab to slide the panel in, close via the
+// close button, the overlay, or Escape. Never pushes/resizes the homepage grid — the panel and its
+// overlay are both position:fixed, entirely outside normal document flow.
+function bindImpactPanel() {
+  const tabBtn = $('#impactTabBtn');
+  const panel = $('#impactPanel');
+  const overlay = $('#impactPanelOverlay');
+  const closeBtn = $('#impactPanelCloseBtn');
+  if (!tabBtn || !panel || !overlay || !closeBtn) return;
+
+  const openPanel = () => {
+    panel.classList.add('open');
+    overlay.classList.add('open');
+    panel.setAttribute('aria-hidden', 'false');
+    tabBtn.setAttribute('aria-expanded', 'true');
+  };
+  const closePanel = () => {
+    panel.classList.remove('open');
+    overlay.classList.remove('open');
+    panel.setAttribute('aria-hidden', 'true');
+    tabBtn.setAttribute('aria-expanded', 'false');
+  };
+  tabBtn.onclick = () => (panel.classList.contains('open') ? closePanel() : openPanel());
+  closeBtn.onclick = closePanel;
+  overlay.onclick = closePanel;
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && panel.classList.contains('open')) closePanel(); });
 }
 
 // ---------- monthly contribution badges (Community Champions) ----------
@@ -2869,19 +2914,58 @@ function bindMyPostsControls() {
   $('#myPostsCategoryFilter').onchange = (e) => { myPostsState.category = e.target.value; renderMyPosts(); };
 }
 
-function closeMyPostsPage() {
+// My Posts is a section INSIDE <main> (see index.html), sibling to all the homepage content divs.
+// Opening/closing it never hides <main> itself — that would put <main> (empty) between header and
+// footer but wouldn't fix anything structurally; instead it toggles which of main's direct children
+// are visible, so <main> (and therefore the header -> main -> footer document order) is always
+// intact. Every homepage child's own inline style is remembered before being hidden and restored
+// exactly on close, so nothing about the homepage's own layout is altered by this toggle.
+function isMyPostsOpen() {
   const page = $('#myPostsPage');
-  if (page) page.style.display = 'none';
+  return !!(page && page.style.display !== 'none');
+}
+
+function showMyPostsSection() {
   const mainEl = document.querySelector('main');
-  if (mainEl) mainEl.style.display = '';
+  if (!mainEl) return;
+  Array.from(mainEl.children).forEach(el => {
+    if (el.id === 'myPostsPage') { el.style.display = 'block'; return; }
+    if (el.dataset.myPostsPrevDisplay === undefined) el.dataset.myPostsPrevDisplay = el.style.display || '';
+    el.style.display = 'none';
+  });
+  $('#myItemsBtn')?.classList.add('active');
+}
+
+function hideMyPostsSection() {
+  const mainEl = document.querySelector('main');
+  if (!mainEl) return;
+  Array.from(mainEl.children).forEach(el => {
+    if (el.id === 'myPostsPage') { el.style.display = 'none'; return; }
+    if (el.dataset.myPostsPrevDisplay !== undefined) {
+      el.style.display = el.dataset.myPostsPrevDisplay;
+      delete el.dataset.myPostsPrevDisplay;
+    }
+  });
+  $('#myItemsBtn')?.classList.remove('active');
+}
+
+function closeMyPostsPage() {
+  if (!isMyPostsOpen()) return;
+  hideMyPostsSection();
   if (location.hash === '#my-posts') history.back();
+}
+
+// Used by every global-nav action (section tabs, More menu, mobile bottom nav) so that clicking
+// Give & Take / Business Surplus / Requests / any homepage-section shortcut while on My Posts
+// always restores the homepage first, instead of silently updating hidden DOM the user can't see.
+function ensureHomepageVisible() {
+  if (isMyPostsOpen()) hideMyPostsSection();
 }
 
 // Back-button support: if the user is on the My Posts page and navigates back, close the page
 // instead of leaving a stale hash. Homepage navigation never touches this listener.
 window.addEventListener('popstate', () => {
-  const page = $('#myPostsPage');
-  if (page && page.style.display !== 'none' && location.hash !== '#my-posts') closeMyPostsPage();
+  if (isMyPostsOpen() && location.hash !== '#my-posts') closeMyPostsPage();
 });
 
 async function openMyPosts() {
@@ -2889,10 +2973,7 @@ async function openMyPosts() {
   closeModal();
   myPostsState.tab = 'all'; myPostsState.q = ''; myPostsState.status = ''; myPostsState.category = '';
   document.querySelectorAll('#myPostsTabs .my-posts-tab').forEach(b => b.classList.toggle('active', b.dataset.tab === 'all'));
-  const mainEl = document.querySelector('main');
-  if (mainEl) mainEl.style.display = 'none';
-  const page = $('#myPostsPage');
-  page.style.display = 'block';
+  showMyPostsSection();
   window.scrollTo(0, 0);
   if (location.hash !== '#my-posts') history.pushState(null, '', '#my-posts');
   $('#myPostsStats').innerHTML = '';

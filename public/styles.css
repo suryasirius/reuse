@@ -28,6 +28,11 @@ body{
   font-size:15px;
   line-height:1.5;
   -webkit-tap-highlight-color:transparent;
+  /* Sticky-footer shell: header/main/footer are flex children in document order, main grows to
+     fill any leftover viewport height so the footer never floats mid-page on short content (e.g.
+     an empty My Posts state). Fixed/overlay elements (bottom nav, modals, sheets) are unaffected
+     since they're already position:fixed and out of normal flow. */
+  display:flex;flex-direction:column;min-height:100vh;
 }
 a{color:inherit;text-decoration:none}
 ::selection{background:var(--brand-light);color:var(--brand-dark)}
@@ -266,7 +271,7 @@ header nav span{color:var(--text);font-weight:600}
 .diff-impact-link:hover{background:var(--brand-dark);color:#fff}
 
 /* ---------- layout ---------- */
-main{max-width:1800px;width:calc(100vw - 64px);margin:0 auto;padding:14px 12px 60px}
+main{max-width:1800px;width:calc(100vw - 64px);margin:0 auto;padding:14px 12px 60px;flex:1 0 auto}
 
 .banner{
   background:#fffaf0;border:1px solid #f3e2b8;color:#7a5c0e;
@@ -541,12 +546,13 @@ main{max-width:1800px;width:calc(100vw - 64px);margin:0 auto;padding:14px 12px 6
   background:linear-gradient(180deg,#2B4E3D,#365E4A);border-radius:var(--radius-lg);
   padding:20px 16px;color:#fff;box-shadow:0 10px 30px rgba(0,0,0,.05);
 }
-/* ---- Marketplace two-column layout: main browsing column + persistent right sidebar
-   (Impact Tracker + compact Business Surplus card) spanning requests/services/champions/
-   categories/grid, not just the grid. ---- */
-.marketplace-columns{display:grid;grid-template-columns:1fr 240px;gap:24px;align-items:start;margin-bottom:8px}
+/* ---- Marketplace layout: main browsing column (requests/services/champions/categories/grid).
+   Used to be a two-column grid with a persistent 240px Impact Tracker + Business Surplus sidebar;
+   the Impact Tracker is now a collapsed edge tab + slide-out overlay (see "impact panel" below),
+   so this is a single column and the grid gets full width by default instead of always losing
+   240px to a sidebar. ---- */
+.marketplace-columns{display:grid;grid-template-columns:1fr;gap:24px;align-items:start;margin-bottom:8px}
 .marketplace-main{min-width:0}
-.marketplace-aside{display:flex;flex-direction:column;gap:20px;position:sticky;top:96px;max-height:calc(100vh - 116px);overflow-y:auto}
 .requests-services-grid{display:grid;grid-template-columns:1fr 1fr;gap:20px;align-items:stretch}
 .requests-services-grid .homepage-section:empty{display:none}
 /* Grid items stretch to the row's height by default, but the colored panel div inside each
@@ -560,17 +566,17 @@ main{max-width:1800px;width:calc(100vw - 64px);margin:0 auto;padding:14px 12px 6
    grid only ~2 columns wide on common 1366/1440 laptop screens — the exact "cards too narrow,
    desktop underused" problem. Past this point the aside drops below the main column instead so
    the grid keeps full width to work with. */
-@media (max-width:1500px){
-  .marketplace-columns{grid-template-columns:1fr}
-  .marketplace-aside{position:static;max-height:none;flex-direction:row;flex-wrap:wrap;margin-top:8px}
-  .marketplace-aside > *{flex:1 1 280px}
-}
 @media (max-width:760px){
   .requests-services-grid{grid-template-columns:1fr}
 }
 /* ---- Compact Business Surplus sidebar card (distinct from the larger full-width CTA banner
    further down the page — this is additive visibility, matching the "Business Surplus must be
    visible in multiple places" requirement, not a replacement for the existing banner). ---- */
+/* #businessAsideCard used to sit in a 240px sidebar column; now that the marketplace grid is a
+   single full-width column (see Impact Tracker note above), cap+right-align it here so it stays a
+   compact card instead of stretching into a giant full-bleed banner — a sizing adjustment only,
+   the card's own content/colors/copy are untouched. */
+#businessAsideCard{max-width:300px;margin:0 0 0 auto}
 .business-aside-card{
   background:linear-gradient(160deg,var(--dark-panel),var(--dark-panel-2));border-radius:var(--radius-lg);
   padding:20px 18px;color:#fff;box-shadow:0 10px 30px rgba(0,0,0,.05);
@@ -608,6 +614,53 @@ main{max-width:1800px;width:calc(100vw - 64px);margin:0 auto;padding:14px 12px 6
 .eco-mini-row .t{color:rgba(255,255,255,.9);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .eco-mini-row .v{color:var(--pop);font-weight:700;font-size:11px;flex-shrink:0;white-space:nowrap}
 .eco-mini-empty{font-size:11.5px;color:rgba(255,255,255,.6);padding:4px 0}
+
+/* ---- Impact Tracker: collapsed edge tab + slide-out overlay panel ----
+   Replaces the old permanent 240px sidebar column. #ecoPanel itself (dark green card, stats,
+   estimated-impact rows, nearby requests) is completely unchanged — none of its own rules below
+   this block were touched — it just now lives inside a slide-out drawer instead of a grid column. */
+.impact-tab{
+  position:fixed;top:50%;right:0;transform:translateY(-50%);
+  width:46px;min-height:120px;padding:14px 0 12px;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;
+  background:linear-gradient(180deg,#2B4E3D,#365E4A);color:#fff;border:none;
+  border-radius:14px 0 0 14px;box-shadow:-6px 6px 24px rgba(0,0,0,.14);
+  cursor:pointer;z-index:45;transition:opacity .25s var(--ease), transform .25s var(--ease);
+}
+.impact-tab:hover{background:linear-gradient(180deg,#335c48,#3f6d55)}
+.impact-tab[aria-expanded="true"]{opacity:0;pointer-events:none;transform:translateY(-50%) translateX(10px)}
+.impact-tab [data-lucide]{width:18px;height:18px;color:var(--pop)}
+.impact-tab-label{
+  writing-mode:vertical-rl;transform:rotate(180deg);
+  font-size:11px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;white-space:nowrap;
+}
+
+.impact-panel-overlay{
+  display:none;position:fixed;inset:0;background:rgba(15,20,17,.4);z-index:54;
+  opacity:0;transition:opacity .25s var(--ease);
+}
+.impact-panel-overlay.open{display:block;opacity:1}
+
+.impact-panel{
+  position:fixed;top:0;right:0;bottom:0;width:300px;max-width:calc(100vw - 24px);
+  background:#fff;z-index:56;box-shadow:-16px 0 40px rgba(0,0,0,.18);
+  padding:44px 16px 20px;overflow-y:auto;
+  transform:translateX(100%);transition:transform .28s var(--ease);
+}
+.impact-panel.open{transform:translateX(0)}
+.impact-panel .eco-panel{box-shadow:none}
+.impact-panel-close{
+  position:absolute;top:14px;right:14px;width:32px;height:32px;border-radius:50%;
+  background:var(--brand-softer);border:none;color:var(--text);display:flex;align-items:center;justify-content:center;
+  cursor:pointer;transition:background .15s;
+}
+.impact-panel-close:hover{background:var(--brand-light)}
+.impact-panel-close [data-lucide]{width:16px;height:16px}
+
+@media (max-width:600px){
+  .impact-tab{width:42px;min-height:104px;gap:8px}
+  .impact-panel{width:88vw;max-width:340px}
+}
 
 @media (max-width:980px){
   .page-layout{flex-direction:column}
@@ -1081,6 +1134,7 @@ header nav .nav-icon-link{
   display:inline-flex;align-items:center;gap:7px;height:auto;padding:8px 4px;box-shadow:none;
 }
 header nav .nav-icon-link:hover{background:none;color:var(--brand-dark);transform:none}
+header nav .nav-icon-link.active{color:var(--brand);font-weight:800}
 header nav .nav-icon-link [data-lucide]{width:18px;height:18px}
 .notif-wrap{position:relative;display:inline-flex}
 header nav .notif-btn{
@@ -1118,12 +1172,6 @@ header nav .user-chip{
 .user-menu-dropdown button:hover{background:var(--brand-softer);color:var(--brand-dark);transform:none;box-shadow:none}
 .user-menu-dropdown button.danger:hover{background:#fdecec;color:var(--danger)}
 .user-menu-dropdown button [data-lucide]{width:15px;height:15px;color:var(--muted);flex-shrink:0}
-header nav .header-overflow-btn{
-  width:38px;height:38px;padding:0;display:inline-flex;align-items:center;justify-content:center;
-  background:none;border:none;color:var(--muted);border-radius:50%;box-shadow:none;
-}
-header nav .header-overflow-btn:hover{background:var(--brand-softer);color:var(--brand-dark);transform:none;box-shadow:none}
-.header-overflow-btn [data-lucide]{width:19px;height:19px}
 /* Anchored dropdown, not a full modal-overlay — sits below the bell and dismisses on outside
    click/Escape (wired in app.js). Collapses toward the viewport edge on narrow screens below. */
 .notif-panel{
@@ -1169,7 +1217,7 @@ header nav .header-overflow-btn:hover{background:var(--brand-softer);color:var(-
 .impact-stat .label{font-size:11.5px;color:var(--muted);margin-top:5px;font-weight:600}
 
 /* ---------- footer ---------- */
-footer{color:var(--muted);font-size:13px;padding:0;border-top:1px solid var(--border-soft);margin-top:56px}
+footer{color:var(--muted);font-size:13px;padding:0;border-top:1px solid var(--border-soft);margin-top:56px;flex-shrink:0}
 .footer-grid{max-width:1800px;margin:0 auto;padding:40px 32px 24px;display:grid;grid-template-columns:1.4fr 1fr 1fr 1fr;gap:28px}
 .footer-brand{display:flex;flex-direction:column;gap:10px}
 .footer-brand .logo{font-family:var(--font-display);font-size:17px;font-weight:800;color:var(--text);display:flex;align-items:center;gap:8px}
@@ -1551,12 +1599,13 @@ html,body{overflow-x:hidden;max-width:100%}
   main{display:flex;flex-direction:column;gap:16px}
   .page-layout{display:contents}
   /* Same "ignore the desktop grid, follow natural DOM order" pattern used by .page-layout above —
-     the two-column marketplace layout (main content + Impact Tracker/Business sidebar) collapses
-     to plain stacked sections on mobile, in the exact same source order. */
+     the marketplace layout collapses to plain stacked sections on mobile, in the exact same source
+     order. (Impact Tracker is no longer part of this grid at all — see .impact-panel below, which
+     is fixed-position and unaffected by this.) */
   .marketplace-columns{display:contents}
   .marketplace-main{display:contents}
-  .marketplace-aside{display:contents}
   .requests-services-grid{display:contents}
+  #businessAsideCard{max-width:none;margin:0}
   .business-aside-card{margin:0 0 16px;border-radius:18px;padding:16px}
 
   /* Nav-redesign lock (both desktop and mobile now share ONE source-order hierarchy: header ->
