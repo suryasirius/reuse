@@ -651,9 +651,13 @@ const REQUEST_SORTS = {
 app.get('/api/items', (req, res) => {
   expireStaleListings();
   const { category, price_type, q, mine, listing_type, location, urgent, sort } = req.query;
+  // "mine" (My Posts dashboard) must show the owner's own closed/completed posts too, so the
+  // status!='closed' exclusion below only applies to the public browse path. Public results
+  // (no mine=) are completely unaffected — same query as before this change.
   let sql = `SELECT items.*, users.name AS owner_name, users.account_type AS owner_type, users.location AS owner_location, users.is_verified AS owner_verified
-             FROM items JOIN users ON items.user_id = users.id WHERE items.status != 'closed'`;
+             FROM items JOIN users ON items.user_id = users.id WHERE 1=1`;
   const params = [];
+  if (!mine) { sql += " AND items.status != 'closed'"; }
   // "mine" (My posts) shows both listing types for that user; otherwise filter by section.
   if (!mine) { sql += ' AND items.listing_type = ?'; params.push(listing_type === 'business_waste' ? 'business_waste' : 'consumer'); }
   if (category) {
@@ -1156,9 +1160,12 @@ app.post('/api/reports', requireAuth, reportLimiter, (req, res) => {
 app.get('/api/requests', (req, res) => {
   expireStaleListings();
   const { request_type, category, q, mine, urgent, location, sort } = req.query;
+  // Same "mine" exception as /api/items above: owners of a "mine" query see their own closed
+  // requests too; the public browse path (no mine=) keeps excluding closed exactly as before.
   let sql = `SELECT requests.*, users.name AS owner_name, users.account_type AS owner_type, users.location AS owner_location, users.is_verified AS owner_verified
-             FROM requests JOIN users ON requests.user_id = users.id WHERE requests.status != 'closed'`;
+             FROM requests JOIN users ON requests.user_id = users.id WHERE 1=1`;
   const params = [];
+  if (!mine) { sql += " AND requests.status != 'closed'"; }
   if (!mine) { sql += " AND requests.request_type = ?"; params.push(request_type === 'service' ? 'service' : 'thing'); }
   if (category) {
     const catValues = categoryFilterValues(category);

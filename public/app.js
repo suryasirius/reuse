@@ -2647,20 +2647,262 @@ function bindRatingPrompts(el, onDone) {
 }
 
 // ---------- my posts (items + requests) ----------
-async function openMyPosts() {
+// ---------- My Posts full-page dashboard ----------
+// Replaces the old small centered modal with a dedicated full-page workspace. No client-side
+// router exists in this app, so this is a page-level container (#myPostsPage in index.html) that
+// swaps visibility with <main> — the header and footer stay exactly where they are and are shared,
+// not duplicated. A #my-posts hash is pushed purely so the browser back button closes the page.
+const myPostsState = { tab: 'all', q: '', status: '', category: '', items: [], requests: [] };
+
+async function loadMyPostsData() {
   const [items, requests] = await Promise.all([
     api('/api/items?mine=' + state.user.id),
     api('/api/requests?mine=' + state.user.id)
   ]);
-  showModal(`
-    <h2>My posts</h2>
-    <h3 style="font-size:14px;color:var(--muted);margin:16px 0 8px">Give &amp; take / Business recycle</h3>
-    ${items.length ? `<div class="grid">${items.map(cardHtml).join('')}</div>` : `<div class="empty">Nothing posted here yet.</div>`}
-    <h3 style="font-size:14px;color:var(--muted);margin:20px 0 8px">Requests (things &amp; services you need)</h3>
-    ${requests.length ? `<div class="grid">${requests.map(requestCardHtml).join('')}</div>` : `<div class="empty">Nothing posted here yet.</div>`}
-  `);
-  document.querySelectorAll('#modalRoot .grid')[0]?.querySelectorAll('.card').forEach(c => c.onclick = () => { closeModal(); openDetail(c.dataset.id); });
-  document.querySelectorAll('#modalRoot .grid')[1]?.querySelectorAll('.card').forEach(c => c.onclick = () => { closeModal(); openRequestDetail(c.dataset.id); });
+  myPostsState.items = items;
+  myPostsState.requests = requests;
+}
+
+function myPostsItemMatchesStatus(item) {
+  return !myPostsState.status || item.status === myPostsState.status;
+}
+function myPostsRequestMatchesStatus(r) {
+  const f = myPostsState.status;
+  if (!f) return true;
+  if (f === 'available') return r.status === 'open';
+  if (f === 'claimed') return false; // requests have no "claimed" state
+  if (f === 'closed') return r.status === 'closed' || r.status === 'fulfilled';
+  return true;
+}
+
+function myPostsFilteredLists() {
+  const q = myPostsState.q.trim().toLowerCase();
+  const cat = myPostsState.category;
+  let items = (myPostsState.tab === 'requests' || myPostsState.tab === 'services') ? [] : myPostsState.items;
+  let requests = (myPostsState.tab === 'items') ? [] : myPostsState.requests;
+  if (myPostsState.tab === 'requests') requests = requests.filter(r => r.request_type !== 'service');
+  if (myPostsState.tab === 'services') requests = requests.filter(r => r.request_type === 'service');
+  items = items.filter(it => (!q || it.title.toLowerCase().includes(q)) && myPostsItemMatchesStatus(it) && (!cat || displayCategory(it.category) === cat));
+  requests = requests.filter(r => (!q || r.title.toLowerCase().includes(q)) && myPostsRequestMatchesStatus(r) && (!cat || displayCategory(r.category) === cat));
+  return { items, requests };
+}
+
+function myPostStatusBadgeHtml(status) {
+  if (status === 'closed') return `<span class="badge my-post-status completed">Completed</span>`;
+  if (status === 'claimed') return `<span class="badge my-post-status claimed">Claimed</span>`;
+  return `<span class="badge my-post-status active">Active</span>`;
+}
+function myPostRequestStatusBadgeHtml(status) {
+  if (status === 'closed' || status === 'fulfilled') return `<span class="badge my-post-status completed">Completed</span>`;
+  return `<span class="badge my-post-status active">Active</span>`;
+}
+
+// Item card — reuses the existing .card base class + thumbInnerHtml/itemPriceLabel helpers so
+// photos, price labels, and the no-photo fallback all look/behave exactly like they do elsewhere;
+// only the extra .my-post-card modifier and management actions are new.
+function myPostCardHtml(item) {
+  return `<div class="card my-post-card" data-id="${item.id}" data-kind="item">
+    <div class="thumb">
+      ${thumbInnerHtml(item)}
+      <span class="price-badge">${itemPriceLabel(item)}</span>
+    </div>
+    <div class="body">
+      <h3>${escapeHtml(item.title)}</h3>
+      <div class="meta">${escapeHtml(displayCategory(item.category))}</div>
+      <div class="meta">${LOC_SVG}${escapeHtml(item.owner_location || 'Nearby')} &middot; ${timeAgo(item.created_at)}</div>
+      <div class="my-post-status-row">${myPostStatusBadgeHtml(item.status)}</div>
+      <div class="my-post-actions">
+        <button type="button" class="my-post-action-btn primary" data-act="view">View</button>
+        <button type="button" class="my-post-action-btn" data-act="edit">Edit</button>
+        <div class="my-post-more-wrap">
+          <button type="button" class="my-post-more-btn" data-act="more" aria-label="More actions">&#8942;</button>
+          <div class="my-post-more-menu" style="display:none">
+            ${item.status !== 'closed' ? `<button type="button" data-act="unavailable">Mark as unavailable</button>` : ''}
+            <button type="button" data-act="delete" class="danger">Delete</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>`;
+}
+
+// Request/service-request card — deliberately different treatment (tag pill instead of a photo
+// thumb, since requests have no images) so it's immediately clear this is "something I asked for",
+// matching the existing requestCardHtml/requestBadgeHtml pattern used elsewhere in the app.
+function myPostRequestCardHtml(r) {
+  const isService = r.request_type === 'service';
+  return `<div class="card my-post-card my-post-request-card" data-id="${r.id}" data-kind="request">
+    <div class="my-post-request-tag">${isService ? 'SERVICE REQUEST' : 'REQUEST'}</div>
+    <div class="body">
+      <h3>${escapeHtml(r.title)}</h3>
+      <div class="meta">${escapeHtml(displayCategory(r.category))}</div>
+      <div class="meta">${LOC_SVG}${escapeHtml(r.owner_location || 'Nearby')} &middot; ${timeAgo(r.created_at)}</div>
+      <div class="my-post-status-row">${myPostRequestStatusBadgeHtml(r.status)}</div>
+      <div class="my-post-actions">
+        <button type="button" class="my-post-action-btn primary" data-act="view">View request &rarr;</button>
+        ${r.status !== 'closed' ? `<div class="my-post-more-wrap">
+          <button type="button" class="my-post-more-btn" data-act="more" aria-label="More actions">&#8942;</button>
+          <div class="my-post-more-menu" style="display:none">
+            <button type="button" data-act="unavailable">Mark as closed</button>
+          </div>
+        </div>` : ''}
+      </div>
+    </div>
+  </div>`;
+}
+
+const MY_POSTS_EMPTY_COPY = {
+  all: "Be the first to give something a new home.",
+  items: "You haven't posted any items yet.",
+  requests: "You haven't posted any requests yet.",
+  services: "You haven't posted any service requests yet."
+};
+function myPostsEmptyHtml() {
+  return `<div class="my-posts-empty-inner">
+    <div class="my-posts-empty-icon"><i data-lucide="sprout"></i></div>
+    <h3>Nothing posted yet</h3>
+    <p>${MY_POSTS_EMPTY_COPY[myPostsState.tab] || MY_POSTS_EMPTY_COPY.all}</p>
+    <button type="button" class="primary-btn" id="myPostsEmptyPostBtn"><i data-lucide="plus"></i> Post an item</button>
+  </div>`;
+}
+
+function renderMyPostsStats() {
+  const allItems = myPostsState.items, allRequests = myPostsState.requests;
+  const total = allItems.length + allRequests.length;
+  const active = allItems.filter(i => i.status === 'available').length + allRequests.filter(r => r.status === 'open').length;
+  const completed = allItems.filter(i => i.status === 'closed').length + allRequests.filter(r => r.status === 'closed' || r.status === 'fulfilled').length;
+  $('#myPostsStats').innerHTML = `
+    <div class="my-posts-stat"><strong>${total}</strong><span>Total posts</span></div>
+    <div class="my-posts-stat"><strong>${active}</strong><span>Active</span></div>
+    <div class="my-posts-stat"><strong>${allRequests.length}</strong><span>Requests</span></div>
+    <div class="my-posts-stat"><strong>${completed}</strong><span>Completed</span></div>
+  `;
+}
+
+function bindMyPostsCardActions(grid, items, requests) {
+  grid.querySelectorAll('.my-post-card').forEach(card => {
+    const id = card.dataset.id, kind = card.dataset.kind;
+    const record = kind === 'item' ? items.find(i => String(i.id) === id) : requests.find(r => String(r.id) === id);
+    if (!record) return;
+    const viewBtn = card.querySelector('[data-act="view"]');
+    if (viewBtn) viewBtn.onclick = () => kind === 'item' ? openDetail(record.id) : openRequestDetail(record.id);
+    const editBtn = card.querySelector('[data-act="edit"]');
+    if (editBtn) editBtn.onclick = () => openEditModal(record); // items only — no edit UI exists for requests today
+    const moreBtn = card.querySelector('[data-act="more"]');
+    const moreMenu = card.querySelector('.my-post-more-menu');
+    if (moreBtn && moreMenu) {
+      moreBtn.onclick = (e) => {
+        e.stopPropagation();
+        const willOpen = moreMenu.style.display !== 'block';
+        grid.querySelectorAll('.my-post-more-menu').forEach(m => m.style.display = 'none');
+        moreMenu.style.display = willOpen ? 'block' : 'none';
+      };
+      const unavailBtn = moreMenu.querySelector('[data-act="unavailable"]');
+      if (unavailBtn) unavailBtn.onclick = async (e) => {
+        e.stopPropagation();
+        const url = kind === 'item' ? '/api/items/' + record.id : '/api/requests/' + record.id;
+        await api(url, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: 'closed' }) });
+        await loadMyPostsData();
+        renderMyPosts();
+      };
+      const delBtn = moreMenu.querySelector('[data-act="delete"]'); // items only — no delete endpoint exists for requests today
+      if (delBtn) delBtn.onclick = async (e) => {
+        e.stopPropagation();
+        if (!confirm('Delete this post? This cannot be undone.')) return;
+        await api('/api/items/' + record.id, { method: 'DELETE' });
+        await loadMyPostsData();
+        renderMyPosts();
+      };
+    }
+  });
+  document.addEventListener('click', () => grid.querySelectorAll('.my-post-more-menu').forEach(m => m.style.display = 'none'), { once: true });
+}
+
+function renderMyPostsGrid(items, requests) {
+  const grid = $('#myPostsGrid'), emptyEl = $('#myPostsEmpty');
+  const cards = [...items.map(myPostCardHtml), ...requests.map(myPostRequestCardHtml)];
+  if (!cards.length) {
+    grid.style.display = 'none';
+    grid.innerHTML = '';
+    emptyEl.style.display = 'block';
+    emptyEl.innerHTML = myPostsEmptyHtml();
+    const btn = $('#myPostsEmptyPostBtn'); if (btn) btn.onclick = () => $('#postBtn').click();
+  } else {
+    emptyEl.style.display = 'none';
+    grid.style.display = 'grid';
+    grid.innerHTML = cards.join('');
+    bindMyPostsCardActions(grid, items, requests);
+  }
+  if (window.lucide) lucide.createIcons();
+}
+
+function renderMyPosts() {
+  const { items, requests } = myPostsFilteredLists();
+  renderMyPostsStats();
+  renderMyPostsGrid(items, requests);
+}
+
+function populateMyPostsCategoryFilter() {
+  const cats = new Set();
+  myPostsState.items.forEach(i => cats.add(displayCategory(i.category)));
+  myPostsState.requests.forEach(r => cats.add(displayCategory(r.category)));
+  const sel = $('#myPostsCategoryFilter');
+  const current = sel.value;
+  sel.innerHTML = '<option value="">Category</option>' + [...cats].sort().map(c => `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`).join('');
+  sel.value = current && cats.has(current) ? current : '';
+}
+
+function bindMyPostsControls() {
+  $('#myPostsBackBtn').onclick = () => closeMyPostsPage();
+  $('#myPostsPostBtn').onclick = () => $('#postBtn').click();
+  document.querySelectorAll('#myPostsTabs .my-posts-tab').forEach(btn => {
+    btn.onclick = () => {
+      document.querySelectorAll('#myPostsTabs .my-posts-tab').forEach(b => b.classList.toggle('active', b === btn));
+      myPostsState.tab = btn.dataset.tab;
+      renderMyPosts();
+    };
+  });
+  const searchInput = $('#myPostsSearch');
+  searchInput.value = myPostsState.q;
+  searchInput.oninput = debounce(() => { myPostsState.q = searchInput.value; renderMyPosts(); }, 200);
+  $('#myPostsStatusFilter').onchange = (e) => { myPostsState.status = e.target.value; renderMyPosts(); };
+  $('#myPostsCategoryFilter').onchange = (e) => { myPostsState.category = e.target.value; renderMyPosts(); };
+}
+
+function closeMyPostsPage() {
+  const page = $('#myPostsPage');
+  if (page) page.style.display = 'none';
+  const mainEl = document.querySelector('main');
+  if (mainEl) mainEl.style.display = '';
+  if (location.hash === '#my-posts') history.back();
+}
+
+// Back-button support: if the user is on the My Posts page and navigates back, close the page
+// instead of leaving a stale hash. Homepage navigation never touches this listener.
+window.addEventListener('popstate', () => {
+  const page = $('#myPostsPage');
+  if (page && page.style.display !== 'none' && location.hash !== '#my-posts') closeMyPostsPage();
+});
+
+async function openMyPosts() {
+  if (!state.user) { closeModal(); return openAuthModal('login'); }
+  closeModal();
+  myPostsState.tab = 'all'; myPostsState.q = ''; myPostsState.status = ''; myPostsState.category = '';
+  document.querySelectorAll('#myPostsTabs .my-posts-tab').forEach(b => b.classList.toggle('active', b.dataset.tab === 'all'));
+  const mainEl = document.querySelector('main');
+  if (mainEl) mainEl.style.display = 'none';
+  const page = $('#myPostsPage');
+  page.style.display = 'block';
+  window.scrollTo(0, 0);
+  if (location.hash !== '#my-posts') history.pushState(null, '', '#my-posts');
+  $('#myPostsStats').innerHTML = '';
+  $('#myPostsGrid').innerHTML = '';
+  $('#myPostsEmpty').style.display = 'none';
+  bindMyPostsControls();
+  if (window.lucide) lucide.createIcons();
+  await loadMyPostsData();
+  populateMyPostsCategoryFilter();
+  renderMyPosts();
 }
 
 // ---------- two-sided completion confirmation ----------

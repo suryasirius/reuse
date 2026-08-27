@@ -242,6 +242,50 @@
   <div class="footer-bottom">© 2026 ReUse Hub. Building a circular economy, one item at a time.</div>
 </footer>
 
+<!-- My Posts full-page dashboard. Hidden by default; toggled by openMyPosts()/closeMyPostsPage()
+     in app.js which show/hide this and <main> together. Header and footer above/below are shared
+     with the homepage and are never duplicated or modified for this feature. -->
+<div id="myPostsPage" class="my-posts-page" style="display:none">
+  <div class="my-posts-inner">
+    <button type="button" class="my-posts-back" id="myPostsBackBtn"><i data-lucide="arrow-left"></i> Back to Give &amp; Take</button>
+    <div class="my-posts-head">
+      <div>
+        <h1>My Posts</h1>
+        <p class="my-posts-subtitle">Manage the items, requests, and services you've shared with the community.</p>
+      </div>
+      <button type="button" class="primary-btn my-posts-post-btn" id="myPostsPostBtn"><i data-lucide="plus"></i> Post an item</button>
+    </div>
+
+    <div class="my-posts-stats" id="myPostsStats"></div>
+
+    <div class="my-posts-tabs" id="myPostsTabs">
+      <button type="button" class="my-posts-tab active" data-tab="all">All</button>
+      <button type="button" class="my-posts-tab" data-tab="items">Items</button>
+      <button type="button" class="my-posts-tab" data-tab="requests">Requests</button>
+      <button type="button" class="my-posts-tab" data-tab="services">Services</button>
+    </div>
+
+    <div class="my-posts-toolbar">
+      <div class="my-posts-search">
+        <i data-lucide="search"></i>
+        <input type="text" id="myPostsSearch" placeholder="Search your posts...">
+      </div>
+      <select id="myPostsStatusFilter">
+        <option value="">Status</option>
+        <option value="available">Active</option>
+        <option value="claimed">Claimed</option>
+        <option value="closed">Completed</option>
+      </select>
+      <select id="myPostsCategoryFilter">
+        <option value="">Category</option>
+      </select>
+    </div>
+
+    <div id="myPostsGrid" class="my-posts-grid"></div>
+    <div id="myPostsEmpty" class="my-posts-empty" style="display:none"></div>
+  </div>
+</div>
+
 <!-- Mobile bottom navigation (nav redesign Stage 2). Desktop keeps the existing header nav
      untouched — this is shown only at the mobile breakpoint via .mobile-only-section. -->
 <nav class="bottom-nav mobile-only-section" id="bottomNav">

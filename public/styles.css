@@ -399,9 +399,6 @@ main{max-width:1800px;width:calc(100vw - 64px);margin:0 auto;padding:14px 12px 6
   pointer-events:none;
 }
 .hero-illustration img{width:100%;height:100%;object-fit:contain;object-position:right bottom;display:block}
-.hero-cta-compact{
-  position:relative;z-index:2;height:44px;padding:0 20px;font-size:13px;flex-shrink:0;margin-top:4px;
-}
 .hero-footer-compact{padding-top:0;border-top:none;margin-top:0;justify-content:center}
 @media (max-width:900px){.hero-illustration{display:none}.hero-text-col{max-width:100%}}
 
@@ -428,10 +425,6 @@ main{max-width:1800px;width:calc(100vw - 64px);margin:0 auto;padding:14px 12px 6
   .hero-compact-title{font-size:14px;line-height:1.5;margin:8px 0 0}
   .hero-illustration{
     top:auto;left:auto;right:0;bottom:0;width:38%;height:100%;
-  }
-  .hero-cta-compact{
-    position:absolute;top:28px;right:36px;margin-top:0;
-    height:42px;padding:0 18px;border-radius:12px;font-size:13px;
   }
   .hero-search-wrap{
     position:absolute;left:36px;bottom:24px;width:72%;max-width:980px;
@@ -1227,7 +1220,6 @@ html,body{overflow-x:hidden;max-width:100%}
   .hero-compact-row{flex-wrap:wrap}
   .hero-headline{font-size:20px;margin:0 0 4px}
   .hero-compact-title{font-size:13px}
-  .hero-cta-compact{height:38px;padding:0 12px;font-size:12px}
   .hero-footer-compact{margin-top:0}
   .hero-dot{width:5px;height:5px}
   .hero-dot.active{width:16px}
@@ -1244,6 +1236,10 @@ html,body{overflow-x:hidden;max-width:100%}
   }
   .searchbar #locationFilter{max-width:none !important}
   .filters-btn{width:100%;justify-content:center;height:44px}
+  .hero-search-btn{width:100%;justify-content:center;height:44px;font-size:14px}
+  .hero-popular-row{gap:8px 10px;margin-top:12px}
+  .hero-popular-label{width:100%;margin-bottom:2px}
+  .hero-popular-link{font-size:12px}
   .filters-panel{flex-direction:column;align-items:stretch;gap:10px;padding:12px}
   .filters-sort-label{justify-content:space-between}
   .filters-sort-label select{flex:1;max-width:60%}
@@ -1714,4 +1710,120 @@ html,body{overflow-x:hidden;max-width:100%}
   body.view-browse #collectionsSection,
   body.view-browse .trust-strip{display:none}
   body.view-browse .hero-banner-compact{padding:10px 14px;margin-bottom:0;gap:0}
+}
+
+/* ==========================================================================
+   My Posts — full-page dashboard (additive only; nothing above this block
+   was edited to build this feature). Reuses existing tokens (--brand,
+   --radius-*, --shadow-*, .card, .badge, .primary-btn) rather than
+   introducing a new visual system.
+   ========================================================================== */
+.my-posts-page{background:var(--brand-softer);min-height:60vh;padding:28px 24px 64px}
+.my-posts-inner{max-width:1260px;margin:0 auto}
+
+.my-posts-back{
+  display:inline-flex;align-items:center;gap:6px;background:none;border:none;cursor:pointer;
+  color:var(--meta);font-size:13px;font-weight:600;padding:0;margin-bottom:18px;
+}
+.my-posts-back:hover{color:var(--brand-dark)}
+.my-posts-back [data-lucide]{width:15px;height:15px}
+
+.my-posts-head{display:flex;align-items:flex-start;justify-content:space-between;gap:20px;flex-wrap:wrap;margin-bottom:20px}
+.my-posts-head h1{margin:0 0 6px;font-size:26px;font-weight:800;color:var(--text);letter-spacing:-.01em}
+.my-posts-subtitle{margin:0;font-size:14px;color:var(--muted);max-width:520px}
+.my-posts-post-btn{margin-top:0;display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
+.my-posts-post-btn [data-lucide]{width:16px;height:16px}
+
+.my-posts-stats{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:22px}
+.my-posts-stat{
+  background:#fff;border:1px solid var(--border-soft);border-radius:var(--radius-md);
+  box-shadow:var(--shadow-xs);padding:14px 16px;text-align:center;
+}
+.my-posts-stat strong{display:block;font-size:22px;font-weight:800;color:var(--brand-dark);line-height:1.2}
+.my-posts-stat span{font-size:12px;font-weight:600;color:var(--muted)}
+
+.my-posts-tabs{display:flex;gap:4px;border-bottom:1px solid var(--border-soft);margin-bottom:16px;overflow-x:auto}
+.my-posts-tab{
+  background:none;border:none;cursor:pointer;padding:10px 14px;font-size:13.5px;font-weight:600;
+  color:var(--muted);white-space:nowrap;border-bottom:2px solid transparent;margin-bottom:-1px;
+  transition:color .15s;
+}
+.my-posts-tab:hover{color:var(--brand-dark)}
+.my-posts-tab.active{color:var(--brand);border-bottom-color:var(--brand);font-weight:700}
+
+.my-posts-toolbar{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:20px}
+.my-posts-search{
+  flex:1;min-width:220px;display:flex;align-items:center;gap:8px;background:#fff;
+  border:1px solid var(--border);border-radius:var(--radius-sm);padding:0 12px;height:42px;
+}
+.my-posts-search [data-lucide]{width:16px;height:16px;color:var(--muted);flex-shrink:0}
+.my-posts-search input{border:none;outline:none;font-size:13.5px;width:100%;height:100%;background:none;color:var(--text)}
+.my-posts-toolbar select{
+  height:42px;border:1px solid var(--border);border-radius:var(--radius-sm);background:#fff;
+  padding:0 12px;font-size:13px;color:var(--meta);cursor:pointer;
+}
+
+.my-posts-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:18px}
+
+.my-post-card{cursor:default}
+.my-post-card:hover{transform:none}
+.my-post-card .thumb{margin-bottom:12px}
+.my-post-status-row{margin:2px 0 10px}
+.badge.my-post-status.active{background:#EAF6EE;color:var(--brand-dark)}
+.badge.my-post-status.claimed{background:#FFF3E0;color:#B45F06}
+.badge.my-post-status.completed{background:#EEF1EC;color:var(--muted)}
+
+.my-post-actions{display:flex;align-items:center;gap:8px;padding-top:10px;border-top:1px solid var(--border-soft)}
+.my-post-action-btn{
+  background:#fff;border:1px solid var(--border);border-radius:var(--radius-sm);
+  padding:7px 14px;font-size:12.5px;font-weight:700;color:var(--meta);cursor:pointer;
+}
+.my-post-action-btn.primary{background:var(--brand-light);border-color:var(--brand-light);color:var(--brand-dark)}
+.my-post-action-btn:hover{border-color:var(--brand);color:var(--brand-dark)}
+.my-post-more-wrap{position:relative;margin-left:auto}
+.my-post-more-btn{
+  background:none;border:none;cursor:pointer;font-size:18px;line-height:1;color:var(--muted);
+  padding:6px 8px;border-radius:var(--radius-sm);
+}
+.my-post-more-btn:hover{background:var(--border-soft)}
+.my-post-more-menu{
+  position:absolute;right:0;top:calc(100% + 4px);background:#fff;border:1px solid var(--border-soft);
+  border-radius:var(--radius-sm);box-shadow:var(--shadow-md);min-width:160px;z-index:5;overflow:hidden;
+}
+.my-post-more-menu button{
+  display:block;width:100%;text-align:left;background:none;border:none;cursor:pointer;
+  padding:10px 14px;font-size:12.5px;font-weight:600;color:var(--text);
+}
+.my-post-more-menu button:hover{background:var(--brand-softer)}
+.my-post-more-menu button.danger{color:var(--danger)}
+
+.my-post-request-card .body{padding-top:2px}
+.my-post-request-tag{
+  display:inline-block;margin:14px 17px 0;padding:3px 10px;border-radius:var(--radius-full);
+  background:var(--brand-light);color:var(--brand-dark);font-size:10.5px;font-weight:800;letter-spacing:.03em;
+}
+.my-post-request-card .body{padding:10px 0 0}
+
+.my-posts-empty{padding:60px 20px}
+.my-posts-empty-inner{max-width:340px;margin:0 auto;text-align:center}
+.my-posts-empty-icon{
+  width:52px;height:52px;border-radius:50%;background:var(--brand-light);color:var(--brand);
+  display:flex;align-items:center;justify-content:center;margin:0 auto 14px;
+}
+.my-posts-empty-icon [data-lucide]{width:24px;height:24px}
+.my-posts-empty-inner h3{margin:0 0 6px;font-size:16px;font-weight:700;color:var(--text)}
+.my-posts-empty-inner p{margin:0 0 16px;font-size:13.5px;color:var(--muted)}
+.my-posts-empty-inner .primary-btn{margin-top:0;display:inline-flex;align-items:center;gap:6px}
+
+@media (max-width:1024px){
+  .my-posts-grid{grid-template-columns:repeat(2,1fr)}
+}
+@media (max-width:640px){
+  .my-posts-page{padding:18px 14px 48px}
+  .my-posts-stats{grid-template-columns:repeat(2,1fr)}
+  .my-posts-grid{grid-template-columns:1fr}
+  .my-posts-tabs{gap:2px}
+  .my-posts-head{flex-direction:column;align-items:stretch}
+  .my-posts-post-btn{justify-content:center}
+  .my-posts-toolbar select{flex:1;min-width:0}
 }
