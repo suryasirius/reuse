@@ -241,7 +241,6 @@ function applySectionUi() {
   $('#businessTeaserSection').innerHTML = '';
   $('#collectionsSection').innerHTML = '';
   $('#businessTeaserPreviewSection').innerHTML = '';
-  if ($('#businessAsideCard')) $('#businessAsideCard').innerHTML = '';
   // The global header CTA is intentionally static "+ Post" now (not context-relabeled) — it opens
   // the same 4-option chooser (Give/Exchange item, Item request, Service request, Business
   // surplus) regardless of which section you're browsing, so posting a request never feels
@@ -251,7 +250,6 @@ function applySectionUi() {
   renderQuickCategories();
   if (isRequests) { loadRequests(); } else { loadItems(); loadTrending(); }
   loadBusinessTeaser();
-  loadBusinessAsideCard();
   if (state.section === 'consumer') {
     // Homepage order: Urgent Requests -> Urgent Food Rescue -> Trending (tabs) -> Categories+Products+Impact -> Community Story -> Business teaser -> Popular Collections.
     loadUrgentRequests();
@@ -489,23 +487,9 @@ function loadBusinessTeaser() {
   if (window.lucide) lucide.createIcons();
 }
 
-// Compact sidebar Business Surplus card — additive to (not a replacement for) the larger
-// #businessTeaserSection banner further down the page; same destination/action, just visible
-// higher up the page alongside the marketplace content instead of only after the full grid.
-function loadBusinessAsideCard() {
-  const el = $('#businessAsideCard');
-  if (!el) return;
-  if (state.section === 'business_waste') { el.innerHTML = ''; return; }
-  el.innerHTML = `<div class="business-aside-card">
-    <h3>🏭 Have business surplus to give away?</h3>
-    <p>Office furniture, equipment, electronics, packaging and more. Help reduce waste and support the community.</p>
-    <button type="button" class="btn-light" id="businessAsideBtn">Explore Business Surplus →</button>
-  </div>`;
-  $('#businessAsideBtn').onclick = () => {
-    document.querySelector('.section-tab[data-section="business_waste"]').click();
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-  };
-}
+// loadBusinessAsideCard() removed — it duplicated the large #businessTeaserSection banner further
+// down the page (same headline/action), and its container (#businessAsideCard) has been removed
+// from index.html.
 
 function activeCategoryList() {
   if (state.section === 'business_waste') return state.businessCategories;
@@ -528,6 +512,7 @@ async function refreshNotifCount() {
 
 const TREND_TABS = [
   { key: 'hot', label: '🔥 Trending today' },
+  { key: 'food', label: '🍱 Food surplus' },
   { key: 'new', label: '🆕 Recently added' },
   { key: 'near', label: '📍 Near you' },
   { key: 'free', label: '♻️ Free items' }
@@ -578,6 +563,11 @@ async function loadTrendTab(tab) {
   try {
     if (tab === 'hot') {
       items = (await api('/api/items-trending?listing_type=' + state.section)).slice(0, 6);
+    } else if (tab === 'food') {
+      // Reuses the existing /api/items category filter with the app's existing 'Food (Surplus)'
+      // category value (see isEdibleFoodListing() in server.js) — no new backend endpoint, no new
+      // filtering logic, same query mechanism the other tabs already use.
+      items = (await api('/api/items?listing_type=' + state.section + '&category=' + encodeURIComponent('Food (Surplus)'))).slice(0, 6);
     } else if (tab === 'new') {
       items = (await api('/api/items?listing_type=' + state.section)).slice(0, 6);
     } else if (tab === 'near') {
@@ -899,7 +889,28 @@ function renderNav() {
           <i data-lucide="chevron-down"></i>
         </button>
         <div class="user-menu-dropdown" id="userMenuDropdown" role="menu">
-          ${state.user.is_admin ? '<button type="button" role="menuitem" id="adminBtn"><i data-lucide="shield"></i> Admin</button>' : ''}
+          <div class="user-menu-header">
+            <span class="user-avatar">${initial}</span>
+            <div class="user-menu-header-text">
+              <strong>Hi, ${escapeHtml(state.user.name)}</strong>
+              ${state.user.location ? `<span>${escapeHtml(state.user.location)}</span>` : ''}
+            </div>
+          </div>
+          <div class="user-menu-group">
+            <div class="user-menu-group-label">Profile</div>
+            <button type="button" role="menuitem" id="menuMyProfileBtn"><i data-lucide="user"></i> My Profile</button>
+          </div>
+          <div class="user-menu-group">
+            <div class="user-menu-group-label">Activity</div>
+            <button type="button" role="menuitem" id="menuMyPostsBtn"><i data-lucide="package"></i> My Posts</button>
+            <button type="button" role="menuitem" id="menuActivityBtn"><i data-lucide="activity"></i> Activity</button>
+          </div>
+          <div class="user-menu-group">
+            <div class="user-menu-group-label">Account</div>
+            <button type="button" role="menuitem" id="menuNotifBtn"><i data-lucide="bell"></i> Notifications</button>
+            ${state.user.is_admin ? '<button type="button" role="menuitem" id="adminBtn"><i data-lucide="shield"></i> Admin</button>' : ''}
+          </div>
+          <div class="user-menu-divider"></div>
           <button type="button" role="menuitem" id="logoutBtn" class="danger"><i data-lucide="log-out"></i> Log out</button>
         </div>
       </div>`;
@@ -916,6 +927,12 @@ function renderNav() {
       userChipBtn.setAttribute('aria-expanded', String(willOpen));
     };
     userChipBtn.onclick = toggleUserMenu;
+    // Dropdown's own quick-access rows reuse the exact same functions as the persistent header
+    // icons above — not a second/different My Posts, Activity, or Notifications implementation.
+    $('#menuMyProfileBtn').onclick = () => { closeUserMenu(); openMyProfile(); };
+    $('#menuMyPostsBtn').onclick = () => { closeUserMenu(); openMyPosts(); };
+    $('#menuActivityBtn').onclick = () => { closeUserMenu(); openActivity(); };
+    $('#menuNotifBtn').onclick = (e) => { e.stopPropagation(); toggleNotifPanel(); closeUserMenu(); };
     // Profile dropdown's outside-click/Escape-to-close behavior is unchanged — it was never
     // specific to the removed overflow button, it belongs to the dropdown itself.
     document.addEventListener('click', (e) => { if (!e.target.closest('#userMenuWrap')) closeUserMenu(); });
@@ -2914,66 +2931,84 @@ function bindMyPostsControls() {
   $('#myPostsCategoryFilter').onchange = (e) => { myPostsState.category = e.target.value; renderMyPosts(); };
 }
 
-// My Posts is a section INSIDE <main> (see index.html), sibling to all the homepage content divs.
-// Opening/closing it never hides <main> itself — that would put <main> (empty) between header and
-// footer but wouldn't fix anything structurally; instead it toggles which of main's direct children
-// are visible, so <main> (and therefore the header -> main -> footer document order) is always
-// intact. Every homepage child's own inline style is remembered before being hidden and restored
-// exactly on close, so nothing about the homepage's own layout is altered by this toggle.
-function isMyPostsOpen() {
-  const page = $('#myPostsPage');
-  return !!(page && page.style.display !== 'none');
+// ---------- generic "homepage overlay page" mechanism ----------
+// A homepage overlay page (My Posts, My Profile, ...) is a section INSIDE <main> (see index.html),
+// sibling to all the homepage content divs. Opening/closing one never hides <main> itself — that
+// would put <main> (empty) between header and footer but wouldn't fix anything structurally;
+// instead it toggles which of main's direct children are visible, so <main> (and therefore the
+// header -> main -> footer document order) is always intact. Every homepage child's own inline
+// style is remembered before being hidden and restored exactly on close, so nothing about the
+// homepage's own layout is altered by this toggle. Only one overlay page is open at a time —
+// opening a second one automatically closes whichever was open, no separate "switch pages" logic
+// needed. Originally written just for My Posts; generalized so My Profile can reuse it exactly
+// rather than duplicating this same show/hide logic a second time.
+let openOverlayPageId = null;
+const OVERLAY_PAGE_ACTIVE_SELECTORS = { myPostsPage: '#myItemsBtn' };
+const OVERLAY_PAGE_HASHES = { myPostsPage: '#my-posts', myProfilePage: '#my-profile' };
+
+function isOverlayPageOpen(pageId) {
+  return openOverlayPageId === pageId;
 }
 
-function showMyPostsSection() {
+function setOverlayActiveIndicator(pageId) {
+  Object.values(OVERLAY_PAGE_ACTIVE_SELECTORS).forEach(sel => $(sel)?.classList.remove('active'));
+  const sel = pageId && OVERLAY_PAGE_ACTIVE_SELECTORS[pageId];
+  if (sel) $(sel)?.classList.add('active');
+}
+
+function showHomepageOverlayPage(pageId) {
   const mainEl = document.querySelector('main');
   if (!mainEl) return;
   Array.from(mainEl.children).forEach(el => {
-    if (el.id === 'myPostsPage') { el.style.display = 'block'; return; }
-    if (el.dataset.myPostsPrevDisplay === undefined) el.dataset.myPostsPrevDisplay = el.style.display || '';
+    if (el.id === pageId) { el.style.display = 'block'; return; }
+    if (el.dataset.overlayPrevDisplay === undefined) el.dataset.overlayPrevDisplay = el.style.display || '';
     el.style.display = 'none';
   });
-  $('#myItemsBtn')?.classList.add('active');
+  openOverlayPageId = pageId;
+  setOverlayActiveIndicator(pageId);
 }
 
-function hideMyPostsSection() {
+function hideHomepageOverlayPage() {
   const mainEl = document.querySelector('main');
   if (!mainEl) return;
   Array.from(mainEl.children).forEach(el => {
-    if (el.id === 'myPostsPage') { el.style.display = 'none'; return; }
-    if (el.dataset.myPostsPrevDisplay !== undefined) {
-      el.style.display = el.dataset.myPostsPrevDisplay;
-      delete el.dataset.myPostsPrevDisplay;
+    if (el.dataset.overlayPrevDisplay !== undefined) {
+      el.style.display = el.dataset.overlayPrevDisplay;
+      delete el.dataset.overlayPrevDisplay;
+    } else if (el.id === openOverlayPageId) {
+      el.style.display = 'none';
     }
   });
-  $('#myItemsBtn')?.classList.remove('active');
-}
-
-function closeMyPostsPage() {
-  if (!isMyPostsOpen()) return;
-  hideMyPostsSection();
-  if (location.hash === '#my-posts') history.back();
+  openOverlayPageId = null;
+  setOverlayActiveIndicator(null);
 }
 
 // Used by every global-nav action (section tabs, More menu, mobile bottom nav) so that clicking
-// Give & Take / Business Surplus / Requests / any homepage-section shortcut while on My Posts
-// always restores the homepage first, instead of silently updating hidden DOM the user can't see.
+// Give & Take / Business Surplus / Requests / any homepage-section shortcut while on My Posts or
+// My Profile always restores the homepage first, instead of silently updating hidden DOM the user
+// can't see.
 function ensureHomepageVisible() {
-  if (isMyPostsOpen()) hideMyPostsSection();
+  if (openOverlayPageId) hideHomepageOverlayPage();
 }
 
-// Back-button support: if the user is on the My Posts page and navigates back, close the page
-// instead of leaving a stale hash. Homepage navigation never touches this listener.
+// Back-button support: if an overlay page is open and the user navigates back, close it instead of
+// leaving a stale hash. Homepage navigation never touches this listener.
 window.addEventListener('popstate', () => {
-  if (isMyPostsOpen() && location.hash !== '#my-posts') closeMyPostsPage();
+  if (openOverlayPageId && location.hash !== OVERLAY_PAGE_HASHES[openOverlayPageId]) hideHomepageOverlayPage();
 });
+
+function closeMyPostsPage() {
+  if (!isOverlayPageOpen('myPostsPage')) return;
+  hideHomepageOverlayPage();
+  if (location.hash === '#my-posts') history.back();
+}
 
 async function openMyPosts() {
   if (!state.user) { closeModal(); return openAuthModal('login'); }
   closeModal();
   myPostsState.tab = 'all'; myPostsState.q = ''; myPostsState.status = ''; myPostsState.category = '';
   document.querySelectorAll('#myPostsTabs .my-posts-tab').forEach(b => b.classList.toggle('active', b.dataset.tab === 'all'));
-  showMyPostsSection();
+  showHomepageOverlayPage('myPostsPage');
   window.scrollTo(0, 0);
   if (location.hash !== '#my-posts') history.pushState(null, '', '#my-posts');
   $('#myPostsStats').innerHTML = '';
@@ -2984,6 +3019,56 @@ async function openMyPosts() {
   await loadMyPostsData();
   populateMyPostsCategoryFilter();
   renderMyPosts();
+}
+
+function closeMyProfilePage() {
+  if (!isOverlayPageOpen('myProfilePage')) return;
+  hideHomepageOverlayPage();
+  if (location.hash === '#my-profile') history.back();
+}
+
+// My Profile: full-page version of the existing "view other user's profile" modal (openProfileModal).
+// Reuses the same GET /api/users/:id/profile endpoint and the same .profile-header/.profile-stats/
+// .profile-rating/.profile-badges/.review-row markup and CSS classes -- no new backend, no fake data.
+// Edit Profile / Address / Password & Security are intentionally omitted (no backend support yet,
+// per user decision to skip those for this pass).
+async function openMyProfile() {
+  if (!state.user) { closeModal(); return openAuthModal('login'); }
+  closeModal();
+  showHomepageOverlayPage('myProfilePage');
+  window.scrollTo(0, 0);
+  if (location.hash !== '#my-profile') history.pushState(null, '', '#my-profile');
+  $('#myProfileBackBtn').onclick = () => closeMyProfilePage();
+  const content = $('#myProfileContent');
+  content.innerHTML = 'Loading...';
+  try {
+    const p = await api('/api/users/' + state.user.id + '/profile');
+    content.innerHTML = `
+      <div class="profile-header">
+        <div class="profile-name">${escapeHtml(p.name)}${p.is_verified ? ` <span class="owner-check" title="Verified">${CHECK_SVG}</span>` : ''} ${p.account_type === 'business' ? '<span class="owner-badge">Business</span>' : '<span class="owner-badge">Individual</span>'}</div>
+        <div class="hint">📍 ${escapeHtml(p.location || 'Location not set')}</div>
+        <div class="hint">${p.member_since ? 'Member since ' + escapeHtml(p.member_since) : ''}</div>
+      </div>
+      <div class="profile-rating">${starsDisplayHtml(p.avg_rating)}${p.rating_count ? ` <span class="hint">(${p.rating_count} review${p.rating_count === 1 ? '' : 's'})</span>` : ''}</div>
+      ${p.badges.length ? `<div class="profile-badges">${p.badges.map(b => `<span class="mini-badge-lg">${PROFILE_BADGE_LABELS[b] || b}</span>`).join(' ')} <span class="hint">· ${escapeHtml(p.badge_month)}</span></div>` : ''}
+      <div class="profile-stats">
+        <div class="profile-stat"><div class="num">${p.reuse_count}</div><div class="label">Successful reuses</div></div>
+        <div class="profile-stat"><div class="num">${p.food_count}</div><div class="label">Food donations</div></div>
+        <div class="profile-stat"><div class="num">${p.total_count}</div><div class="label">Total contributions</div></div>
+      </div>
+      <h3 style="margin-top:18px">Recent reviews</h3>
+      <div class="hint" style="margin-bottom:8px">Reviewer identities are kept anonymous.</div>
+      ${p.recent_reviews.length ? p.recent_reviews.map(r => `
+        <div class="review-row">
+          <div class="stars-display">${'★'.repeat(r.stars)}${'☆'.repeat(5 - r.stars)}</div>
+          ${r.tags.length ? `<div class="review-tags">${r.tags.map(t => `<span class="badge">${escapeHtml(tagLabel(t))}</span>`).join(' ')}</div>` : ''}
+          ${r.comment ? `<p class="review-comment">"${escapeHtml(r.comment)}"</p>` : ''}
+        </div>`).join('') : `<div class="empty">No reviews yet.</div>`}
+    `;
+    if (window.lucide) lucide.createIcons();
+  } catch (e) {
+    content.innerHTML = `<div class="empty">Could not load your profile.</div>`;
+  }
 }
 
 // ---------- two-sided completion confirmation ----------

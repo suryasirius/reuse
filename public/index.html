@@ -167,14 +167,6 @@
     </div>
   </div>
 
-  <!-- Business Surplus compact promo card: moved out of the old .marketplace-aside sidebar column
-       (removed below) into its own full-width slot in the same reading-order position. Same id,
-       same loadBusinessAsideCard() JS, same .business-aside-card content/styling — only its outer
-       container changed from a 240px-wide sidebar slot to a full-width block, which is an
-       unavoidable side effect of removing that sidebar (see Impact Tracker note below), not a
-       redesign of this card itself. -->
-  <div id="businessAsideCard"></div>
-
   <!-- Impact Tracker: collapsed edge tab + slide-out overlay panel, replacing the old permanent
        240px .marketplace-aside sidebar column so the marketplace grid above gets full width by
        default. #ecoPanel's markup/content below is byte-for-byte the same as it was in the sidebar
@@ -270,6 +262,25 @@
 
       <div id="myPostsGrid" class="my-posts-grid"></div>
       <div id="myPostsEmpty" class="my-posts-empty" style="display:none"></div>
+    </div>
+  </div>
+
+  <!-- My Profile full page. Same overlay-page pattern as #myPostsPage above: a direct child of
+       <main>, hidden by default, shown/hidden via the generic showHomepageOverlayPage()/
+       hideHomepageOverlayPage() functions in app.js. Reuses the existing .profile-header/
+       .profile-stats/.profile-rating/.profile-badges CSS already used by the "view other user's
+       profile" modal, and the existing GET /api/users/:id/profile endpoint -- no new backend. -->
+  <div id="myProfilePage" class="my-posts-page" style="display:none">
+    <div class="my-posts-inner">
+      <button type="button" class="my-posts-back" id="myProfileBackBtn"><i data-lucide="arrow-left"></i> Back to Give &amp; Take</button>
+      <div class="my-posts-head">
+        <div>
+          <h1>My Profile</h1>
+          <p class="my-posts-subtitle">Your public presence and contribution history on ReUse Hub.</p>
+        </div>
+      </div>
+
+      <div id="myProfileContent" class="my-profile-content"></div>
     </div>
   </div>
 </main>

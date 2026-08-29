@@ -554,7 +554,10 @@ main{max-width:1800px;width:calc(100vw - 64px);margin:0 auto;padding:14px 12px 6
 .marketplace-columns{display:grid;grid-template-columns:1fr;gap:24px;align-items:start;margin-bottom:8px}
 .marketplace-main{min-width:0}
 .requests-services-grid{display:grid;grid-template-columns:1fr 1fr;gap:20px;align-items:stretch}
-.requests-services-grid .homepage-section:empty{display:none}
+/* Generalized from a narrower rule that only covered .requests-services-grid — any homepage
+   section that renders no content for the current state (e.g. #businessSurplusIntro outside the
+   Business Surplus tab) collapses instead of leaving an empty 24px-margined gap in the page. */
+.homepage-section:empty{display:none}
 /* Grid items stretch to the row's height by default, but the colored panel div inside each
    (.highlight-wrap) only took its own content height — leaving the shorter panel's background
    visibly shorter than its sibling. Filling the stretched cell equalizes the two panels exactly. */
@@ -569,25 +572,6 @@ main{max-width:1800px;width:calc(100vw - 64px);margin:0 auto;padding:14px 12px 6
 @media (max-width:760px){
   .requests-services-grid{grid-template-columns:1fr}
 }
-/* ---- Compact Business Surplus sidebar card (distinct from the larger full-width CTA banner
-   further down the page — this is additive visibility, matching the "Business Surplus must be
-   visible in multiple places" requirement, not a replacement for the existing banner). ---- */
-/* #businessAsideCard used to sit in a 240px sidebar column; now that the marketplace grid is a
-   single full-width column (see Impact Tracker note above), cap+right-align it here so it stays a
-   compact card instead of stretching into a giant full-bleed banner — a sizing adjustment only,
-   the card's own content/colors/copy are untouched. */
-#businessAsideCard{max-width:300px;margin:0 0 0 auto}
-.business-aside-card{
-  background:linear-gradient(160deg,var(--dark-panel),var(--dark-panel-2));border-radius:var(--radius-lg);
-  padding:20px 18px;color:#fff;box-shadow:0 10px 30px rgba(0,0,0,.05);
-}
-.business-aside-card h3{margin:0 0 6px;font-size:15px;font-weight:800}
-.business-aside-card p{margin:0 0 14px;font-size:12.5px;color:rgba(255,255,255,.78);line-height:1.5}
-.business-aside-card .btn-light{
-  width:100%;background:var(--pop);color:var(--pop-ink);border:none;padding:10px;border-radius:12px;
-  font-weight:800;font-size:12.5px;cursor:pointer;transition:transform .15s var(--ease);
-}
-.business-aside-card .btn-light:hover{transform:translateY(-1px) scale(1.02)}
 .eco-head{display:flex;align-items:center;gap:8px;color:#fff;font-size:12.5px;font-weight:800;text-transform:uppercase;letter-spacing:.05em;margin-bottom:16px}
 .eco-head [data-lucide]{
   width:14px;height:14px;flex-shrink:0;padding:6px;box-sizing:content-box;
@@ -1160,10 +1144,18 @@ header nav .user-chip{
 .user-chip-label{font-size:13.5px;font-weight:600;color:var(--text);white-space:nowrap}
 .user-chip [data-lucide]{width:16px;height:16px;color:var(--muted);flex-shrink:0}
 .user-menu-dropdown{
-  display:none;position:absolute;top:calc(100% + 8px);right:0;min-width:180px;z-index:50;
+  display:none;position:absolute;top:calc(100% + 8px);right:0;min-width:220px;z-index:50;
   background:#fff;border:1px solid var(--border-soft);border-radius:14px;box-shadow:var(--shadow-lg);
   padding:6px;flex-direction:column;gap:2px;
 }
+.user-menu-header{display:flex;align-items:center;gap:10px;padding:8px 10px 10px}
+.user-menu-header .user-avatar{width:36px;height:36px;font-size:15px;flex-shrink:0}
+.user-menu-header-text{display:flex;flex-direction:column;min-width:0}
+.user-menu-header-text strong{font-size:13.5px;font-weight:700;color:var(--text)}
+.user-menu-header-text span{font-size:11.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.user-menu-group{padding-top:4px;border-top:1px solid var(--border-soft)}
+.user-menu-group-label{padding:6px 10px 2px;font-size:10px;font-weight:800;color:var(--muted-2);text-transform:uppercase;letter-spacing:.05em}
+.user-menu-divider{border-top:1px solid var(--border-soft);margin:4px 0}
 .user-menu-dropdown.open{display:flex}
 .user-menu-dropdown button{
   display:flex;align-items:center;gap:9px;text-align:left;background:none;border:none;
@@ -1499,6 +1491,7 @@ html,body{overflow-x:hidden;max-width:100%}
 .owner-name-link:hover{color:var(--brand-dark);text-decoration:underline}
 .detail-owner .owner-name-link{font:inherit}
 
+.my-profile-content{max-width:640px;background:var(--card);border:1px solid var(--border-soft);border-radius:var(--radius-lg);padding:22px 24px;box-shadow:var(--shadow-xs)}
 .profile-header{margin-bottom:14px}
 .profile-name{font-size:18px;font-weight:800;display:flex;align-items:center;gap:6px;flex-wrap:wrap}
 .profile-rating{display:flex;align-items:center;gap:6px;margin:6px 0 12px;font-size:14px}
@@ -1605,8 +1598,6 @@ html,body{overflow-x:hidden;max-width:100%}
   .marketplace-columns{display:contents}
   .marketplace-main{display:contents}
   .requests-services-grid{display:contents}
-  #businessAsideCard{max-width:none;margin:0}
-  .business-aside-card{margin:0 0 16px;border-radius:18px;padding:16px}
 
   /* Nav-redesign lock (both desktop and mobile now share ONE source-order hierarchy: header ->
      nearby -> search -> trending -> people-asking-for-help -> champions -> categories ->
@@ -1751,7 +1742,6 @@ html,body{overflow-x:hidden;max-width:100%}
   body.view-browse #urgentFoodSection,
   body.view-browse #championsSection,
   body.view-browse #ecoPanel,
-  body.view-browse #businessAsideCard,
   body.view-browse #businessTeaserPreviewSection,
   body.view-browse #businessSurplusIntro,
   body.view-browse #communitySection,
@@ -1869,6 +1859,7 @@ html,body{overflow-x:hidden;max-width:100%}
 }
 @media (max-width:640px){
   .my-posts-page{padding:18px 14px 48px}
+  .my-profile-content{padding:16px 16px;max-width:100%}
   .my-posts-stats{grid-template-columns:repeat(2,1fr)}
   .my-posts-grid{grid-template-columns:1fr}
   .my-posts-tabs{gap:2px}
