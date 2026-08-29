@@ -903,6 +903,9 @@ function renderNav() {
           <div class="user-menu-group">
             <div class="user-menu-group-label">Activity</div>
             <button type="button" role="menuitem" id="menuMyPostsBtn"><i data-lucide="package"></i> My Posts</button>
+            <button type="button" role="menuitem" id="menuDonatedBtn"><i data-lucide="gift"></i> Donated Items</button>
+            <button type="button" role="menuitem" id="menuReceivedBtn"><i data-lucide="package-check"></i> Received Items</button>
+            <button type="button" role="menuitem" id="menuExchangesBtn"><i data-lucide="repeat"></i> My Exchanges</button>
             <button type="button" role="menuitem" id="menuActivityBtn"><i data-lucide="activity"></i> Activity</button>
           </div>
           <div class="user-menu-group">
@@ -931,6 +934,12 @@ function renderNav() {
     // icons above — not a second/different My Posts, Activity, or Notifications implementation.
     $('#menuMyProfileBtn').onclick = () => { closeUserMenu(); openMyProfile(); };
     $('#menuMyPostsBtn').onclick = () => { closeUserMenu(); openMyPosts(); };
+    // Donated / Received / My Exchanges are not separate pages or data sources -- they open the
+    // existing Activity page pre-scrolled to the tab that already holds that real data, exactly
+    // like the Activity link below. This avoids duplicating the item/offer-request logic.
+    $('#menuDonatedBtn').onclick = () => { closeUserMenu(); openActivity('tabItemsReceived'); };
+    $('#menuReceivedBtn').onclick = () => { closeUserMenu(); openActivity('tabItemsSent'); };
+    $('#menuExchangesBtn').onclick = () => { closeUserMenu(); openActivity('tabOffersReceived'); };
     $('#menuActivityBtn').onclick = () => { closeUserMenu(); openActivity(); };
     $('#menuNotifBtn').onclick = (e) => { e.stopPropagation(); toggleNotifPanel(); closeUserMenu(); };
     // Profile dropdown's outside-click/Escape-to-close behavior is unchanged — it was never
