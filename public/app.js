@@ -3,6 +3,9 @@ const state = {
   section: 'consumer', requestType: 'thing', urgentOnly: false, sort: '',
   items: [], requests: [], category: '', priceType: '', q: '', location: '',
   wishlist: new Set(), monthlyBadges: null,
+  // Cached once after login from the existing GET /api/users/:id/profile endpoint, purely to show
+  // "Member since ..." in the profile dropdown header. Not a new data source or duplicated field.
+  myMemberSince: null,
   // Mobile-only Home/Browse split (nav redesign Stage 3) — desktop never reads this; it always
   // shows the single continuous page it always has. 'home' = curated homepage (Trending preview,
   // People asking for help, Champions, compact Impact card). 'browse' = full categories + grid.
@@ -118,6 +121,14 @@ async function init() {
   initHeroCarousel();
   loadMonthlyBadges();
   if (state.user) refreshNotifCount();
+  // One-time fetch of member_since for the dropdown header — reuses the same profile endpoint
+  // My Profile/My Impact call, just cached once so the header doesn't need its own request.
+  if (state.user) {
+    api('/api/users/' + state.user.id + '/profile').then(p => {
+      state.myMemberSince = p.member_since || null;
+      renderNav();
+    }).catch(() => {});
+  }
   $('#impactStripBtn').onclick = () => openImpactModal();
   $('#footerImpactLink').onclick = (e) => { e.preventDefault(); openImpactModal(); };
   // Single delegated listener covers every .owner-name-link rendered anywhere (cards, detail
@@ -892,8 +903,14 @@ function renderNav() {
           <div class="user-menu-header">
             <span class="user-avatar">${initial}</span>
             <div class="user-menu-header-text">
-              <strong>Hi, ${escapeHtml(state.user.name)}</strong>
-              ${state.user.location ? `<span>${escapeHtml(state.user.location)}</span>` : ''}
+              <strong>Hi, ${escapeHtml(titleCase(state.user.name))}</strong>
+              ${(() => {
+                const parts = [];
+                if (state.user.location) parts.push(escapeHtml(titleCase(state.user.location)));
+                if (state.myMemberSince) parts.push('Member since ' + escapeHtml(state.myMemberSince));
+                return parts.length ? `<span>${parts.join(' · ')}</span>` : '';
+              })()}
+              ${state.user.is_verified ? `<span class="user-menu-verified">${CHECK_SVG} Verified member</span>` : ''}
             </div>
           </div>
           <div class="user-menu-group">
@@ -906,6 +923,8 @@ function renderNav() {
             <button type="button" role="menuitem" id="menuDonatedBtn"><i data-lucide="gift"></i> Donated Items</button>
             <button type="button" role="menuitem" id="menuReceivedBtn"><i data-lucide="package-check"></i> Received Items</button>
             <button type="button" role="menuitem" id="menuExchangesBtn"><i data-lucide="repeat"></i> My Exchanges</button>
+            <button type="button" role="menuitem" id="menuSavedBtn"><i data-lucide="heart"></i> Saved Items</button>
+            <button type="button" role="menuitem" id="menuImpactBtn"><i data-lucide="sprout"></i> My Impact</button>
             <button type="button" role="menuitem" id="menuActivityBtn"><i data-lucide="activity"></i> Activity</button>
           </div>
           <div class="user-menu-group">
@@ -940,6 +959,8 @@ function renderNav() {
     $('#menuDonatedBtn').onclick = () => { closeUserMenu(); openActivity('tabItemsReceived'); };
     $('#menuReceivedBtn').onclick = () => { closeUserMenu(); openActivity('tabItemsSent'); };
     $('#menuExchangesBtn').onclick = () => { closeUserMenu(); openActivity('tabOffersReceived'); };
+    $('#menuSavedBtn').onclick = () => { closeUserMenu(); openSavedItemsModal(); };
+    $('#menuImpactBtn').onclick = () => { closeUserMenu(); openMyImpactModal(); };
     $('#menuActivityBtn').onclick = () => { closeUserMenu(); openActivity(); };
     $('#menuNotifBtn').onclick = (e) => { e.stopPropagation(); toggleNotifPanel(); closeUserMenu(); };
     // Profile dropdown's outside-click/Escape-to-close behavior is unchanged — it was never
@@ -1474,7 +1495,12 @@ function bindWishlistButtons(container) {
   container.querySelectorAll('.wishlist-btn').forEach(btn => {
     btn.onclick = (e) => {
       e.stopPropagation();
-      const id = Number(btn.dataset.wish);
+      // Pre-existing bug fixed here: item ids are nanoid strings (e.g. "TcIyO6Bhf-VGabK48Zpdp"),
+      // not numbers. `Number(...)` silently turned every id into NaN, so state.wishlist never
+      // actually matched item.id on the "liked" check in cardHtml() -- the heart never reliably
+      // showed as already-saved. Keeping the id as the real string fixes that and is required for
+      // Saved Items to work at all.
+      const id = btn.dataset.wish;
       if (state.wishlist.has(id)) state.wishlist.delete(id); else state.wishlist.add(id);
       btn.classList.toggle('active');
     };
@@ -1482,6 +1508,10 @@ function bindWishlistButtons(container) {
 }
 
 function escapeHtml(s) { return (s || '').replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
+
+// Display-only formatting (never mutates the stored name/location) — used for the profile dropdown
+// header, e.g. "surya" -> "Surya", "chennai" -> "Chennai".
+function titleCase(s) { return (s || '').replace(/\b\w/g, c => c.toUpperCase()); }
 
 // ---------- auth helpers (shared by login/signup/forgot/reset) ----------
 
@@ -3077,6 +3107,64 @@ async function openMyProfile() {
     if (window.lucide) lucide.createIcons();
   } catch (e) {
     content.innerHTML = `<div class="empty">Could not load your profile.</div>`;
+  }
+}
+
+// Saved Items: state.wishlist is an in-memory Set of item ids toggled by the heart button on any
+// item card (see bindWishlistButtons) — it has never been persisted server-side, so this modal
+// shows exactly what it is: the items you've hearted this session, fetched fresh by id from the
+// real GET /api/items/:id endpoint (same one openDetail uses). No new backend, no fake data.
+async function openSavedItemsModal() {
+  if (!state.user) { closeModal(); return openAuthModal('login'); }
+  const ids = [...state.wishlist];
+  showModal(`<h2>❤️ Saved Items</h2><p class="hint">Items you've saved this session — the heart doesn't persist across a page reload yet.</p><div id="savedItemsGrid" class="grid" style="margin-top:12px"></div>`);
+  const grid = $('#savedItemsGrid');
+  if (!ids.length) {
+    grid.innerHTML = `<div class="empty">You haven't saved any items yet. Tap the heart on any item to save it here.</div>`;
+    return;
+  }
+  grid.innerHTML = 'Loading...';
+  try {
+    const items = (await Promise.all(ids.map(id => api('/api/items/' + id).catch(() => null)))).filter(Boolean);
+    if (!items.length) { grid.innerHTML = `<div class="empty">Your saved items are no longer available.</div>`; return; }
+    grid.innerHTML = items.map(cardHtml).join('');
+    grid.querySelectorAll('.card').forEach(c => c.onclick = () => { closeModal(); openDetail(c.dataset.id); });
+    // Unhearting here always means "remove from this list" (everything shown is already saved).
+    grid.querySelectorAll('.wishlist-btn').forEach(btn => {
+      btn.onclick = (e) => {
+        e.stopPropagation();
+        state.wishlist.delete(btn.dataset.wish);
+        btn.closest('.card').remove();
+        if (!grid.querySelector('.card')) grid.innerHTML = `<div class="empty">You haven't saved any items yet. Tap the heart on any item to save it here.</div>`;
+      };
+    });
+  } catch (e) {
+    grid.innerHTML = `<div class="empty">Could not load your saved items.</div>`;
+  }
+}
+
+// My Impact: personal contribution numbers, reusing the same GET /api/users/:id/profile endpoint
+// as My Profile (not a second data source). The CO2/trees figures use the exact multipliers
+// already shown on the community Impact Tracker (loadEcoPanel), just applied to this user's own
+// total_count instead of the sitewide total — clearly labeled as estimates, same as elsewhere.
+async function openMyImpactModal() {
+  if (!state.user) { closeModal(); return openAuthModal('login'); }
+  showModal(`<h2>🌱 My Impact</h2><p class="hint">Your personal contribution to ReUse Hub.</p><div id="myImpactContent">Loading...</div>`);
+  try {
+    const p = await api('/api/users/' + state.user.id + '/profile');
+    const reused = p.total_count || 0;
+    $('#myImpactContent').innerHTML = `
+      <div class="impact-grid">
+        <div class="impact-stat"><div class="num">${p.reuse_count}</div><div class="label">Successful reuses</div></div>
+        <div class="impact-stat"><div class="num">${p.food_count}</div><div class="label">Food donations</div></div>
+        <div class="impact-stat"><div class="num">${p.total_count}</div><div class="label">Total contributions</div></div>
+        <div class="impact-stat"><div class="num">${Math.round(reused * 4.2)}</div><div class="label">Est. CO₂ saved (kg)</div></div>
+        <div class="impact-stat"><div class="num">${Math.round(reused / 15) || (reused > 0 ? 1 : 0)}</div><div class="label">Est. trees saved</div></div>
+      </div>
+      <p class="hint" style="margin-top:12px">CO₂ and tree figures are estimates using the same multipliers as ReUse Hub's community Impact Tracker, applied to your own contributions.</p>
+    `;
+  } catch (e) {
+    $('#myImpactContent').innerHTML = `<div class="empty">Could not load your impact.</div>`;
   }
 }
 
