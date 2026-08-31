@@ -69,6 +69,8 @@ const ratingLimiter = rateLimit({ windowMs: 60 * 60 * 1000, max: 30, standardHea
 // only to blunt bulk scraping, not to gate normal browsing.
 const profileLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 120, standardHeaders: true, legacyHeaders: false, handler: rateLimitHandler });
 const reportLimiter = rateLimit({ windowMs: 60 * 60 * 1000, max: 10, standardHeaders: true, legacyHeaders: false, handler: rateLimitHandler });
+const accountUpdateLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 20, standardHeaders: true, legacyHeaders: false, handler: rateLimitHandler });
+const changePasswordLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 5, standardHeaders: true, legacyHeaders: false, handler: rateLimitHandler });
 
 // UPLOAD_DIR mirrors DB_FILE — lets the demo environment store its sample photos in a separate
 // folder so they never land in the real public/uploads directory. Unset, this is identical to
@@ -612,6 +614,45 @@ app.post('/api/reset-password', passwordResetLimiter, (req, res) => {
 
 app.get('/api/me', optionalAuth, (req, res) => {
   res.json({ user: req.user || null, categories: CATEGORIES, business_categories: BUSINESS_CATEGORIES, service_categories: SERVICE_CATEGORIES });
+});
+
+// Edit Profile: only name and location are editable here. Email is intentionally left out — changing
+// it would need its own re-verification flow, which doesn't exist yet, so this doesn't pretend to
+// support it. account_type/is_admin/is_verified/is_banned are never client-settable.
+app.patch('/api/me', requireAuth, accountUpdateLimiter, (req, res) => {
+  const { name, location } = req.body;
+  if (name !== undefined) {
+    const trimmed = String(name).trim();
+    if (!trimmed || trimmed.length > 80) return res.status(400).json({ error: 'Name must be 1-80 characters' });
+    db.prepare('UPDATE users SET name = ? WHERE id = ?').run(trimmed, req.user.id);
+  }
+  if (location !== undefined) {
+    const trimmedLoc = String(location).trim();
+    if (trimmedLoc.length > 120) return res.status(400).json({ error: 'Location must be under 120 characters' });
+    db.prepare('UPDATE users SET location = ? WHERE id = ?').run(trimmedLoc, req.user.id);
+  }
+  const user = db.prepare(`SELECT ${USER_FIELDS} FROM users WHERE id = ?`).get(req.user.id);
+  res.json({ user });
+});
+
+// Password & Security: change password while already logged in (distinct from the forgot/reset-by-
+// email-token flow above, which is for when you're locked out). Requires the current password.
+app.post('/api/change-password', requireAuth, changePasswordLimiter, (req, res) => {
+  const { currentPassword, newPassword, confirmPassword } = req.body;
+  if (!currentPassword || !newPassword || !confirmPassword) return res.status(400).json({ error: 'Missing fields' });
+  if (newPassword !== confirmPassword) return res.status(400).json({ error: 'New passwords do not match' });
+  if (newPassword.length < 6 || newPassword.length > 72) return res.status(400).json({ error: 'Password must be 6-72 characters' });
+
+  const fullUser = db.prepare('SELECT * FROM users WHERE id = ?').get(req.user.id);
+  if (!fullUser || !bcrypt.compareSync(currentPassword, fullUser.password_hash)) {
+    return res.status(400).json({ error: 'Current password is incorrect' });
+  }
+  const hash = bcrypt.hashSync(newPassword, 10);
+  db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(hash, req.user.id);
+  // Revoke every OTHER session (e.g. a device you're not using right now) but keep this one alive,
+  // so changing your password from a settings page doesn't also log you out of the tab you're on.
+  db.prepare('DELETE FROM sessions WHERE user_id = ? AND token != ?').run(req.user.id, req.cookies.token);
+  res.json({ ok: true });
 });
 
 // ---------- trust: verification (demo OTP — no real SMS/email provider wired up yet) ----------

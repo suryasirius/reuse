@@ -930,6 +930,7 @@ function renderNav() {
           <div class="user-menu-group">
             <div class="user-menu-group-label">Account</div>
             <button type="button" role="menuitem" id="menuNotifBtn"><i data-lucide="bell"></i> Notifications</button>
+            <button type="button" role="menuitem" id="menuPasswordBtn"><i data-lucide="lock"></i> Password &amp; Security</button>
             ${state.user.is_admin ? '<button type="button" role="menuitem" id="adminBtn"><i data-lucide="shield"></i> Admin</button>' : ''}
           </div>
           <div class="user-menu-divider"></div>
@@ -963,6 +964,7 @@ function renderNav() {
     $('#menuImpactBtn').onclick = () => { closeUserMenu(); openMyImpactModal(); };
     $('#menuActivityBtn').onclick = () => { closeUserMenu(); openActivity(); };
     $('#menuNotifBtn').onclick = (e) => { e.stopPropagation(); toggleNotifPanel(); closeUserMenu(); };
+    $('#menuPasswordBtn').onclick = () => { closeUserMenu(); openChangePasswordModal(); };
     // Profile dropdown's outside-click/Escape-to-close behavior is unchanged — it was never
     // specific to the removed overflow button, it belongs to the dropdown itself.
     document.addEventListener('click', (e) => { if (!e.target.closest('#userMenuWrap')) closeUserMenu(); });
@@ -1717,6 +1719,67 @@ function openForgotPasswordModal() {
         }
       });
     } catch (err) { errEl.textContent = authErrorMessage(err); }
+  };
+}
+
+// ---------- change password (while logged in) ----------
+// Distinct from the forgot/reset-by-email-token flow above — this is Password & Security in the
+// profile dropdown, for a user who already knows their current password and just wants to change
+// it. Reuses the same pw-toggle/strength-meter UI as every other password field in the app.
+function openChangePasswordModal() {
+  showModal(`
+    <h2>Password &amp; Security</h2>
+    <form id="changePwForm" novalidate>
+      <label for="cpCurrent">Current password</label>
+      <div class="pw-field">
+        <input id="cpCurrent" name="currentPassword" type="password" required minlength="6" maxlength="72" autocomplete="current-password">
+        ${pwToggleHtml('cpCurrent')}
+      </div>
+      <label for="cpNew">New password</label>
+      <div class="pw-field">
+        <input id="cpNew" name="newPassword" type="password" required minlength="6" maxlength="72" autocomplete="new-password">
+        ${pwToggleHtml('cpNew')}
+      </div>
+      ${strengthMeterHtml('cpNew')}
+      <label for="cpConfirm">Confirm new password</label>
+      <div class="pw-field">
+        <input id="cpConfirm" name="confirmPassword" type="password" required minlength="6" maxlength="72" autocomplete="new-password">
+        ${pwToggleHtml('cpConfirm')}
+      </div>
+      <div class="error" id="cpError" role="alert" aria-live="polite"></div>
+      <div class="success-text" id="cpSuccess" role="status" aria-live="polite" style="display:none"></div>
+      <button class="primary-btn" type="submit" id="cpSubmit">Change password</button>
+    </form>
+  `);
+  document.querySelectorAll('.pw-toggle').forEach(wirePasswordToggle);
+  wireStrengthMeter($('#cpNew'), 'cpNew');
+  if (window.lucide) lucide.createIcons();
+
+  $('#changePwForm').onsubmit = async (e) => {
+    e.preventDefault();
+    const errEl = $('#cpError'), okEl = $('#cpSuccess');
+    errEl.textContent = ''; okEl.style.display = 'none';
+    const currentPassword = $('#cpCurrent').value;
+    const newPassword = $('#cpNew').value;
+    const confirmPassword = $('#cpConfirm').value;
+    if (newPassword !== confirmPassword) { errEl.textContent = 'New passwords do not match.'; return; }
+    if (newPassword.length < 6) { errEl.textContent = 'Password must be at least 6 characters.'; return; }
+
+    const btn = $('#cpSubmit');
+    try {
+      await submitAuthForm(btn, 'Changing…', async () => {
+        await api('/api/change-password', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ currentPassword, newPassword, confirmPassword })
+        });
+        okEl.textContent = 'Password changed. Your other devices have been signed out.';
+        okEl.style.display = 'block';
+        $('#changePwForm').querySelectorAll('input').forEach(i => i.value = '');
+        btn.textContent = 'Done';
+      });
+    } catch (err) {
+      errEl.textContent = authErrorMessage(err);
+    }
   };
 }
 
@@ -3087,6 +3150,7 @@ async function openMyProfile() {
         <div class="profile-name">${escapeHtml(p.name)}${p.is_verified ? ` <span class="owner-check" title="Verified">${CHECK_SVG}</span>` : ''} ${p.account_type === 'business' ? '<span class="owner-badge">Business</span>' : '<span class="owner-badge">Individual</span>'}</div>
         <div class="hint">📍 ${escapeHtml(p.location || 'Location not set')}</div>
         <div class="hint">${p.member_since ? 'Member since ' + escapeHtml(p.member_since) : ''}</div>
+        <button type="button" class="my-profile-edit-btn" id="myProfileEditBtn"><i data-lucide="pencil"></i> Edit profile</button>
       </div>
       <div class="profile-rating">${starsDisplayHtml(p.avg_rating)}${p.rating_count ? ` <span class="hint">(${p.rating_count} review${p.rating_count === 1 ? '' : 's'})</span>` : ''}</div>
       ${p.badges.length ? `<div class="profile-badges">${p.badges.map(b => `<span class="mini-badge-lg">${PROFILE_BADGE_LABELS[b] || b}</span>`).join(' ')} <span class="hint">· ${escapeHtml(p.badge_month)}</span></div>` : ''}
@@ -3105,9 +3169,46 @@ async function openMyProfile() {
         </div>`).join('') : `<div class="empty">No reviews yet.</div>`}
     `;
     if (window.lucide) lucide.createIcons();
+    $('#myProfileEditBtn').onclick = () => renderMyProfileEditForm(p);
   } catch (e) {
     content.innerHTML = `<div class="empty">Could not load your profile.</div>`;
   }
+}
+
+// Edit Profile form: name + location only (see PATCH /api/me on the server — email/account_type
+// aren't editable here, same scope decision already made for the rest of the account system).
+function renderMyProfileEditForm(p) {
+  const content = $('#myProfileContent');
+  content.innerHTML = `
+    <form id="myProfileEditForm" novalidate>
+      <label for="editProfileName">Full name</label>
+      <input id="editProfileName" name="name" required minlength="1" maxlength="80" value="${escapeHtml(p.name)}">
+      <label for="editProfileLocation">Location (city/area)</label>
+      <input id="editProfileLocation" name="location" maxlength="120" placeholder="e.g. Chennai" value="${escapeHtml(p.location || '')}">
+      <div class="error" id="editProfileError" role="alert" aria-live="polite"></div>
+      <div style="display:flex;gap:10px;margin-top:12px">
+        <button class="primary-btn" type="submit">Save changes</button>
+        <button class="my-profile-edit-cancel" type="button" id="editProfileCancelBtn">Cancel</button>
+      </div>
+    </form>
+  `;
+  $('#editProfileCancelBtn').onclick = () => openMyProfile();
+  $('#myProfileEditForm').onsubmit = async (e) => {
+    e.preventDefault();
+    const errEl = $('#editProfileError');
+    errEl.textContent = '';
+    const name = $('#editProfileName').value.trim();
+    const loc = $('#editProfileLocation').value.trim();
+    if (!name) { errEl.textContent = 'Name is required.'; return; }
+    try {
+      const { user } = await api('/api/me', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, location: loc }) });
+      state.user = user;
+      renderNav();
+      await openMyProfile();
+    } catch (err) {
+      errEl.textContent = err.message || 'Could not save changes.';
+    }
+  };
 }
 
 // Saved Items: state.wishlist is an in-memory Set of item ids toggled by the heart button on any
