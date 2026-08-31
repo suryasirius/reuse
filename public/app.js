@@ -2306,10 +2306,11 @@ function openPostRequestModal() {
   const isService = state.requestType === 'service';
   showModal(`
     <h2>Post what you need</h2>
+    <div class="privacy-note">🔒 Your exact location and contact details stay private. Only your general area (from your profile) is shown publicly — nothing more is shared until you accept a helper.</div>
     <form id="postRequestForm">
       <input type="hidden" name="request_type" value="${state.requestType}">
       <label>Title</label><input name="title" required placeholder="${isService ? 'e.g. Need an electrician for a fan installation' : 'e.g. Need a study table for a week'}">
-      <label>Description</label><textarea name="description" required placeholder="Describe exactly what you need, timing, location, etc."></textarea>
+      <label>Description</label><textarea name="description" required placeholder="Describe what you need and when. Avoid including your exact address, phone number, or email here — those stay private automatically."></textarea>
       <label>Category</label>
       <select name="category" required>${(isService ? state.serviceCategories : state.categories).map(c => `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`).join('')}</select>
       <label>Quantity (optional)</label><input name="quantity" placeholder="e.g. 2 units, 1 visit">
@@ -2321,6 +2322,7 @@ function openPostRequestModal() {
       </select>
       <div id="budgetExtra"></div>
       <label><input type="checkbox" name="is_urgent" id="isUrgent" style="width:auto;display:inline-block;margin-right:6px">This is urgent</label>
+      ${isService ? `<div class="emergency-note" id="emergencyNote" style="display:none">⚠️ Need immediate help? For emergencies or unsafe situations, contact local emergency or roadside assistance services rather than relying on a community response.</div>` : ''}
       <div class="error" id="postRequestError"></div>
       <button class="primary-btn" type="submit">Post request</button>
     </form>
@@ -2334,6 +2336,10 @@ function openPostRequestModal() {
   };
   updateBudgetExtra();
   $('#budgetType').onchange = updateBudgetExtra;
+  if (isService) {
+    const emergencyNote = $('#emergencyNote');
+    $('#isUrgent').onchange = (e) => { emergencyNote.style.display = e.target.checked ? 'block' : 'none'; };
+  }
 
   $('#postRequestForm').onsubmit = async (e) => {
     e.preventDefault();
@@ -2366,9 +2372,11 @@ async function openRequestDetail(id) {
     <div class="detail-owner">
       Posted by <button type="button" class="owner-name-link" data-uid="${escapeHtml(r.user_id)}"><strong>${escapeHtml(r.owner_name)}</strong></button> ${r.owner_type === 'business' ? '<span class="owner-badge">Business</span>' : '<span class="owner-badge">Individual</span>'}
       ${r.owner_verified ? ' <span class="verified-badge">✓ Verified</span>' : ''}
-      ${r.owner_location ? `<br>Location: ${escapeHtml(r.owner_location)}` : ''}
+      ${r.owner_location ? `<br>📍 Approximate area: ${escapeHtml(r.owner_location)}` : ''}
     </div>
+    ${r.is_urgent && r.request_type === 'service' ? `<div class="emergency-note">⚠️ Need immediate help? For emergencies or unsafe situations, contact local emergency or roadside assistance services rather than relying on a community response.</div>` : ''}
     ${isOwner ? `
+      <div class="privacy-note">🔒 Your exact location and contact details stay private. They're only shared once you accept a helper below.</div>
       <button class="primary-btn" id="closeRequestBtn" style="background:#c0392b">Mark as fulfilled / closed</button>
     ` : `
       <form id="respondForm">
@@ -2376,6 +2384,8 @@ async function openRequestDetail(id) {
         <textarea name="message" placeholder="e.g. I have one available, can drop it off tomorrow"></textarea>
         ${r.budget_type === 'paid' ? `<label>Your price (₹, optional)</label><input name="offered_price" type="number" min="0" step="1" placeholder="Leave blank to accept their budget">` : ''}
         ${pickupFieldsHtml()}
+        <div class="hint">🔒 Your message is sent to the requester. Contact details are only exchanged if they accept your offer.</div>
+        <div class="safety-note">⚠️ Stay safe: never send money, OTPs, passwords, or banking details to another member. Avoid paying anyone in advance unless you've met and confirmed the work.</div>
         <div class="error" id="respondError"></div>
         <button class="primary-btn" type="submit">I can help</button>
       </form>
@@ -2405,12 +2415,31 @@ async function openRequestDetail(id) {
 
 // ---------- report modal ----------
 const REPORT_LABELS = { user: 'this user', rating: 'this review', item: 'this post', request: 'this post' };
+// Keep in sync with server.js REPORT_CATEGORIES — a fixed list rather than free text so reports
+// mean something specific and can eventually be triaged by category.
+const REPORT_CATEGORIES = [
+  { key: 'scam_fraud', label: 'Scam / fraud' },
+  { key: 'harassment', label: 'Harassment' },
+  { key: 'suspicious_request', label: 'Suspicious request' },
+  { key: 'inappropriate_content', label: 'Inappropriate content' },
+  { key: 'fake_profile', label: 'Fake profile' },
+  { key: 'asking_for_money', label: 'Asking for money' },
+  { key: 'unsafe_behavior', label: 'Unsafe behavior' },
+  { key: 'other', label: 'Other' }
+];
+function reportCategoryLabel(key) { return (REPORT_CATEGORIES.find(c => c.key === key) || {}).label || key; }
+
 function openReportModal(targetType, targetId) {
   showModal(`
     <h2>Report ${REPORT_LABELS[targetType] || 'this post'}</h2>
     <form id="reportForm">
       <label>What's wrong?</label>
-      <textarea name="reason" required placeholder="e.g. Fake listing, inappropriate content, scam attempt"></textarea>
+      <select name="category" required>
+        <option value="">Select a reason</option>
+        ${REPORT_CATEGORIES.map(c => `<option value="${c.key}">${escapeHtml(c.label)}</option>`).join('')}
+      </select>
+      <label>Additional details (optional)</label>
+      <textarea name="reason" placeholder="Anything else that would help us look into this"></textarea>
       <div class="error" id="reportError"></div>
       <button class="primary-btn" type="submit">Submit report</button>
     </form>
@@ -2418,8 +2447,9 @@ function openReportModal(targetType, targetId) {
   $('#reportForm').onsubmit = async (e) => {
     e.preventDefault();
     const fd = Object.fromEntries(new FormData(e.target));
+    if (!fd.category) { $('#reportError').textContent = 'Please select a reason.'; return; }
     try {
-      await api('/api/reports', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ target_type: targetType, target_id: targetId, reason: fd.reason }) });
+      await api('/api/reports', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ target_type: targetType, target_id: targetId, category: fd.category, reason: fd.reason }) });
       closeModal();
       alert('Thanks — this has been reported.');
     } catch (err) { $('#reportError').textContent = err.message; }
@@ -2513,7 +2543,8 @@ async function openAdminDashboard(tab = 'reports', statusFilter = 'open') {
         <div class="admin-report-row" data-id="${r.id}">
           <div><strong>${escapeHtml(REPORT_LABELS[r.target_type] || r.target_type)}</strong>: ${escapeHtml(r.target.label)} ${r.target.status ? `<span class="hint">(${escapeHtml(r.target.status)})</span>` : ''}</div>
           <div class="hint">Reported by ${escapeHtml(r.reporter_name)} · ${escapeHtml(r.created_at)}</div>
-          <p class="review-comment">"${escapeHtml(r.reason)}"</p>
+          <div class="mini-badge-lg" style="margin-top:6px">${escapeHtml(reportCategoryLabel(r.category))}</div>
+          ${r.reason ? `<p class="review-comment">"${escapeHtml(r.reason)}"</p>` : ''}
           ${r.status !== 'open' ? `<div class="hint">${REPORT_STATUS_LABELS[r.status]}${r.resolution_note ? ': "' + escapeHtml(r.resolution_note) + '"' : ''}</div>` : `
           <div class="admin-report-actions">
             <button type="button" class="ghost admin-act" data-act="resolve">Resolve</button>
@@ -3345,12 +3376,16 @@ async function setActivityTab(tabId) {
 
   if (tabId === 'tabItemsReceived') {
     const claims = await api('/api/my/claims-received');
+    // Privacy tiering: before you accept, you see who's interested (name, verified badge, their
+    // message) but not their email — same server-enforced rule as everywhere else in the app. Once
+    // accepted, contact info becomes genuinely necessary, so it's shown then.
     el.innerHTML = claims.length ? claims.map(c => `
       <div class="claim-row">
-        <strong>${escapeHtml(c.item_title)}</strong> — from <button type="button" class="owner-name-link" data-uid="${escapeHtml(c.requester_id)}">${escapeHtml(c.requester_name)}</button> (${escapeHtml(c.requester_email)})
+        <strong>${escapeHtml(c.item_title)}</strong> — from <button type="button" class="owner-name-link" data-uid="${escapeHtml(c.requester_id)}">${escapeHtml(c.requester_name)}</button>${c.requester_verified ? ' <span class="verified-badge">✓ Verified</span>' : ''}
         <div class="hint">${escapeHtml(c.message || 'No message')}</div>
         <div class="hint">Status: ${c.status}</div>
-        ${c.status === 'pending' ? `<div class="actions">
+        ${(c.status === 'accepted' || c.status === 'completed' || c.status === 'not_completed') && c.requester_email ? `<div class="hint">✉️ ${escapeHtml(c.requester_email)}</div>` : ''}
+        ${c.status === 'pending' ? `<div class="hint">🔒 Their contact details stay private until you accept.</div><div class="actions">
           <button class="accept" data-id="${c.id}" data-status="accepted">Accept</button>
           <button class="decline" data-id="${c.id}" data-status="declined">Decline</button>
         </div>` : ''}
@@ -3377,12 +3412,15 @@ async function setActivityTab(tabId) {
     bindRatingPrompts(el, () => { setActivityTab('tabItemsSent'); });
   } else if (tabId === 'tabOffersReceived') {
     const offers = await api('/api/my/request-offers-received');
+    // Same privacy tiering as claims above: verified badge + message pre-accept, contact/exact
+    // pickup only once accepted (server already enforces this — see stripExactPickup).
     el.innerHTML = offers.length ? offers.map(o => `
       <div class="claim-row">
-        <strong>${escapeHtml(o.request_title)}</strong> — from <button type="button" class="owner-name-link" data-uid="${escapeHtml(o.responder_id)}">${escapeHtml(o.responder_name)}</button> (${escapeHtml(o.responder_email)})
+        <strong>${escapeHtml(o.request_title)}</strong> — from <button type="button" class="owner-name-link" data-uid="${escapeHtml(o.responder_id)}">${escapeHtml(o.responder_name)}</button>${o.responder_verified ? ' <span class="verified-badge">✓ Verified</span>' : ''}
         <div class="hint">${escapeHtml(o.message || 'No message')}${o.offered_price ? ' · Offered ₹' + o.offered_price : ''}</div>
         <div class="hint">Status: ${o.status}</div>
-        ${o.status === 'pending' ? `<div class="actions">
+        ${(o.status === 'accepted' || o.status === 'completed') && o.responder_email ? `<div class="hint">✉️ ${escapeHtml(o.responder_email)}</div>` : ''}
+        ${o.status === 'pending' ? `<div class="hint">🔒 Their contact details stay private until you accept.</div><div class="actions">
           <button class="accept" data-id="${o.id}" data-status="accepted">Accept</button>
           <button class="decline" data-id="${o.id}" data-status="declined">Decline</button>
         </div>` : ''}

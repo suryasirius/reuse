@@ -317,7 +317,10 @@ const reportMigrations = {
   status: "ALTER TABLE reports ADD COLUMN status TEXT DEFAULT 'open'",
   resolved_by: "ALTER TABLE reports ADD COLUMN resolved_by TEXT DEFAULT NULL",
   resolved_at: "ALTER TABLE reports ADD COLUMN resolved_at TEXT DEFAULT NULL",
-  resolution_note: "ALTER TABLE reports ADD COLUMN resolution_note TEXT DEFAULT ''"
+  resolution_note: "ALTER TABLE reports ADD COLUMN resolution_note TEXT DEFAULT ''",
+  // Fixed report-reason categories (see REPORT_CATEGORIES in server.js) — 'reason' remains as
+  // free-text optional additional detail, category is the required, structured classification.
+  category: "ALTER TABLE reports ADD COLUMN category TEXT DEFAULT 'other'"
 };
 for (const [col, sql] of Object.entries(reportMigrations)) {
   if (!reportColumns.includes(col)) db.exec(sql);

@@ -430,13 +430,16 @@ function normalizeAvailableUntil(v) {
 const PICKUP_TYPES = ['public_point', 'my_address', 'business_location', 'custom'];
 function sanitizePickupType(t) { return PICKUP_TYPES.includes(t) ? t : 'public_point'; }
 
-// Strips exact pickup info (pickup_address, pickup_instructions) from an item row. Used for every
-// public/listing surface. pickup_area (approximate, e.g. "Arakkonam ~2 km away") is always safe to
-// keep. Never trust the frontend about who's allowed to see more than this — that decision is made
-// per-request in the item-detail route below, using req.user from the session.
+// Strips exact pickup info (pickup_address, pickup_instructions) AND the owner's/responder's/
+// requester's email from a row. Used for every public/listing surface. pickup_area (approximate,
+// e.g. "Arakkonam ~2 km away") is always safe to keep — it's the user's own coarse description, not
+// a computed distance. Never trust the frontend about who's allowed to see more than this — that
+// decision is made per-request at each call site below, using req.user from the verified session.
+// A destructure of a field that isn't present on a given row (e.g. list endpoints that never select
+// owner_email in the first place) is a harmless no-op, so this is safe to apply broadly.
 function stripExactPickup(item) {
   if (!item) return item;
-  const { pickup_address, pickup_instructions, ...safe } = item;
+  const { pickup_address, pickup_instructions, owner_email, responder_email, requester_email, ...safe } = item;
   return safe;
 }
 
@@ -942,10 +945,13 @@ app.post('/api/items/:id/claim', requireAuth, (req, res) => {
 });
 
 app.get('/api/my/claims-received', requireAuth, (req, res) => {
-  const rows = db.prepare(`SELECT claims.*, items.title AS item_title, users.name AS requester_name, users.email AS requester_email
+  const rows = db.prepare(`SELECT claims.*, items.title AS item_title, users.name AS requester_name, users.email AS requester_email, users.is_verified AS requester_verified
                             FROM claims JOIN items ON claims.item_id = items.id JOIN users ON claims.requester_id = users.id
                             WHERE items.user_id = ? ORDER BY claims.created_at DESC`).all(req.user.id);
-  res.json(rows);
+  // Someone interested in your item is visible with name/rating/verified status only. Their email
+  // only becomes visible once you've accepted their claim — same "public listing -> interested
+  // person -> accepted interaction" privacy tiering as everywhere else.
+  res.json(rows.map(r => (r.status === 'accepted' || r.status === 'completed' || r.status === 'not_completed') ? r : stripExactPickup(r)));
 });
 
 app.get('/api/my/claims-sent', requireAuth, (req, res) => {
@@ -1188,12 +1194,17 @@ app.post('/api/notifications/:id/read', requireAuth, (req, res) => {
 
 // ---------- reports ----------
 const REPORT_TARGET_TYPES = ['item', 'user', 'request', 'rating'];
+// Fixed reason categories rather than free text only — lets Report actually mean something
+// specific (and someday be triaged/prioritized by category) instead of an unstructured guess.
+// 'other' is the catch-all; 'reason' stays as optional additional detail on every category.
+const REPORT_CATEGORIES = ['scam_fraud', 'harassment', 'suspicious_request', 'inappropriate_content', 'fake_profile', 'asking_for_money', 'unsafe_behavior', 'other'];
 app.post('/api/reports', requireAuth, reportLimiter, (req, res) => {
-  const { target_type, target_id, reason } = req.body;
-  if (!target_type || !target_id || !reason) return res.status(400).json({ error: 'Missing fields' });
+  const { target_type, target_id, category, reason } = req.body;
+  if (!target_type || !target_id || !category) return res.status(400).json({ error: 'Missing fields' });
   if (!REPORT_TARGET_TYPES.includes(target_type)) return res.status(400).json({ error: 'Invalid target_type' });
-  db.prepare('INSERT INTO reports (id, reporter_id, target_type, target_id, reason) VALUES (?,?,?,?,?)')
-    .run(nanoid(), req.user.id, target_type, target_id, String(reason).slice(0, 500));
+  if (!REPORT_CATEGORIES.includes(category)) return res.status(400).json({ error: 'Invalid category' });
+  db.prepare('INSERT INTO reports (id, reporter_id, target_type, target_id, category, reason) VALUES (?,?,?,?,?,?)')
+    .run(nanoid(), req.user.id, target_type, target_id, category, String(reason || '').slice(0, 500));
   res.json({ ok: true });
 });
 
@@ -1234,11 +1245,16 @@ app.get('/api/requests/urgent', (req, res) => {
   res.json(rows);
 });
 
-app.get('/api/requests/:id', (req, res) => {
+app.get('/api/requests/:id', optionalAuth, (req, res) => {
   const request = db.prepare(`SELECT requests.*, users.name AS owner_name, users.account_type AS owner_type, users.location AS owner_location, users.email AS owner_email, users.is_verified AS owner_verified
                                FROM requests JOIN users ON requests.user_id = users.id WHERE requests.id = ?`).get(req.params.id);
   if (!request) return res.status(404).json({ error: 'Not found' });
-  res.json(request);
+  // owner_email must only ever reach the requester themselves — anyone browsing/considering
+  // offering help sees name/location/verified status only, never the requester's email. Contact
+  // only ever happens through an accepted request_offer (see /api/my/request-offers-received),
+  // never by reading it straight off the request.
+  const isOwner = req.user && req.user.id === request.user_id;
+  res.json(isOwner ? request : stripExactPickup(request));
 });
 
 app.post('/api/requests', requireAuth, (req, res) => {
@@ -1291,7 +1307,7 @@ app.post('/api/requests/:id/respond', requireAuth, (req, res) => {
 });
 
 app.get('/api/my/request-offers-received', requireAuth, (req, res) => {
-  const rows = db.prepare(`SELECT request_offers.*, requests.title AS request_title, users.name AS responder_name, users.email AS responder_email
+  const rows = db.prepare(`SELECT request_offers.*, requests.title AS request_title, users.name AS responder_name, users.email AS responder_email, users.is_verified AS responder_verified
                             FROM request_offers JOIN requests ON request_offers.request_id = requests.id JOIN users ON request_offers.responder_id = users.id
                             WHERE requests.user_id = ? ORDER BY request_offers.created_at DESC`).all(req.user.id);
   // Exact pickup location for an offer is only shown to the request owner once that offer is
