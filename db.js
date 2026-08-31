@@ -127,6 +127,23 @@ CREATE TABLE IF NOT EXISTS moderation_actions (
   FOREIGN KEY(admin_id) REFERENCES users(id)
 );
 
+-- Trust & Safety: user-initiated blocks. Separate from 'reports' (a flag for admin moderation
+-- review) -- a block is a personal relationship the blocker controls directly, with no admin
+-- involvement. Bidirectional in effect (see isBlockedEitherWay() in server.js): if A blocks B,
+-- both A's and B's content/interactions are hidden from each other, closing the obvious workaround
+-- of the blocked side just creating new content the blocker would otherwise still see.
+CREATE TABLE IF NOT EXISTS blocks (
+  id TEXT PRIMARY KEY,
+  blocker_id TEXT NOT NULL,
+  blocked_id TEXT NOT NULL,
+  created_at TEXT DEFAULT (datetime('now')),
+  FOREIGN KEY(blocker_id) REFERENCES users(id),
+  FOREIGN KEY(blocked_id) REFERENCES users(id),
+  CHECK (blocker_id != blocked_id)
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_blocks_pair ON blocks(blocker_id, blocked_id);
+CREATE INDEX IF NOT EXISTS idx_blocks_blocked ON blocks(blocked_id);
+
 CREATE TABLE IF NOT EXISTS requests (
   id TEXT PRIMARY KEY,
   user_id TEXT NOT NULL,

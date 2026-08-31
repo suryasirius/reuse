@@ -69,6 +69,7 @@ const ratingLimiter = rateLimit({ windowMs: 60 * 60 * 1000, max: 30, standardHea
 // only to blunt bulk scraping, not to gate normal browsing.
 const profileLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 120, standardHeaders: true, legacyHeaders: false, handler: rateLimitHandler });
 const reportLimiter = rateLimit({ windowMs: 60 * 60 * 1000, max: 10, standardHeaders: true, legacyHeaders: false, handler: rateLimitHandler });
+const blockLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 30, standardHeaders: true, legacyHeaders: false, handler: rateLimitHandler });
 const accountUpdateLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 20, standardHeaders: true, legacyHeaders: false, handler: rateLimitHandler });
 const changePasswordLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 5, standardHeaders: true, legacyHeaders: false, handler: rateLimitHandler });
 
@@ -692,7 +693,7 @@ const REQUEST_SORTS = {
 };
 
 // ---------- items ----------
-app.get('/api/items', (req, res) => {
+app.get('/api/items', optionalAuth, (req, res) => {
   expireStaleListings();
   const { category, price_type, q, mine, listing_type, location, urgent, sort } = req.query;
   // "mine" (My Posts dashboard) must show the owner's own closed/completed posts too, so the
@@ -722,7 +723,10 @@ app.get('/api/items', (req, res) => {
   // List/browse view is always the "public" surface: never include exact pickup address/instructions
   // here, regardless of who's logged in. Exact info is only ever returned from the single-item
   // detail route below, and only to the owner or the accepted requester.
-  const rows = db.prepare(sql).all(...params).map(attachMedia).map(stripExactPickup);
+  let rows = db.prepare(sql).all(...params).map(attachMedia).map(stripExactPickup);
+  // Block filtering only applies to the public browse path — "mine" (My Posts) is always your own
+  // items, irrelevant to any block relationship you might have with someone else.
+  if (!mine && req.user) rows = rows.filter(item => !isBlockedEitherWay(req.user.id, item.user_id));
   res.json(rows);
 });
 
@@ -732,7 +736,7 @@ app.get('/api/items', (req, res) => {
 // Optional listing_type filter keeps "urgent food about to spoil" (homepage) and "urgent business
 // surplus" (Business Surplus page) from being mixed into one undifferentiated list — without it,
 // every urgent item across both sections is returned, same as before this filter was added.
-app.get('/api/items/urgent', (req, res) => {
+app.get('/api/items/urgent', optionalAuth, (req, res) => {
   expireStaleListings();
   const { listing_type } = req.query;
   let sql = `SELECT items.*, users.name AS owner_name, users.account_type AS owner_type, users.location AS owner_location, users.is_verified AS owner_verified
@@ -744,7 +748,8 @@ app.get('/api/items/urgent', (req, res) => {
     params.push(listing_type);
   }
   sql += ' ORDER BY items.created_at DESC LIMIT 8';
-  const rows = db.prepare(sql).all(...params).map(attachMedia).map(stripExactPickup);
+  let rows = db.prepare(sql).all(...params).map(attachMedia).map(stripExactPickup);
+  if (req.user) rows = rows.filter(item => !isBlockedEitherWay(req.user.id, item.user_id));
   res.json(rows);
 });
 
@@ -752,6 +757,9 @@ app.get('/api/items/:id', optionalAuth, (req, res) => {
   const item = db.prepare(`SELECT items.*, users.name AS owner_name, users.account_type AS owner_type, users.location AS owner_location, users.email AS owner_email, users.is_verified AS owner_verified
                             FROM items JOIN users ON items.user_id = users.id WHERE items.id = ?`).get(req.params.id);
   if (!item) return res.status(404).json({ error: 'Not found' });
+  // A block relationship makes this listing simply not exist for either side — 404 rather than a
+  // dedicated "blocked" error, so the blocked side can't tell the difference from a deleted listing.
+  if (req.user && isBlockedEitherWay(req.user.id, item.user_id)) return res.status(404).json({ error: 'Not found' });
   const full = attachMedia(item);
   // Exact pickup_address/pickup_instructions must only ever reach: (1) the authenticated owner,
   // or (2) the requester on a claim for this item that the owner has accepted. Everyone else
@@ -929,6 +937,9 @@ app.post('/api/items/:id/claim', requireAuth, (req, res) => {
   const item = db.prepare('SELECT * FROM items WHERE id = ?').get(req.params.id);
   if (!item) return res.status(404).json({ error: 'Not found' });
   if (item.user_id === req.user.id) return res.status(400).json({ error: "Can't claim your own item" });
+  // 404 (not 403) to match the same "this listing simply doesn't exist for you" treatment used on
+  // the detail route above — doesn't confirm to the client that a block is the specific reason.
+  if (isBlockedEitherWay(req.user.id, item.user_id)) return res.status(404).json({ error: 'Not found' });
   // Defense-in-depth: expireStaleListings() above should already have closed this if it passed
   // its deadline, but re-check the raw field too in case a claim lands in the narrow race window
   // between that closing pass and this request. Scoped only to the new available_until field so
@@ -1114,9 +1125,10 @@ app.get('/api/ratings/my-submitted', requireAuth, (req, res) => {
 // badge on listings, or (b) a live-computed aggregate. Never selects email, password_hash, exact
 // pickup fields, or session data — and never returns a per-exchange activity log, only counts, so
 // this can't be used to reconstruct who transacted with whom or when.
-app.get('/api/users/:id/profile', profileLimiter, (req, res) => {
+app.get('/api/users/:id/profile', optionalAuth, profileLimiter, (req, res) => {
   const user = db.prepare('SELECT id, name, account_type, location, is_verified, created_at FROM users WHERE id = ?').get(req.params.id);
   if (!user) return res.status(404).json({ error: 'Not found' });
+  if (req.user && isBlockedEitherWay(req.user.id, user.id)) return res.status(404).json({ error: 'Not found' });
 
   const claimContribs = db.prepare(`
     SELECT items.category AS category FROM claims JOIN items ON claims.item_id = items.id
@@ -1192,6 +1204,45 @@ app.post('/api/notifications/:id/read', requireAuth, (req, res) => {
   res.json({ ok: true });
 });
 
+// ---------- blocks (Trust & Safety) ----------
+// Separate from `reports` below: a block is a personal relationship the blocker controls directly
+// (no admin involvement, no moderation queue). Bidirectional in effect — see isBlockedEitherWay().
+function isBlockedEitherWay(userIdA, userIdB) {
+  if (!userIdA || !userIdB) return false;
+  const row = db.prepare(
+    'SELECT id FROM blocks WHERE (blocker_id = ? AND blocked_id = ?) OR (blocker_id = ? AND blocked_id = ?)'
+  ).get(userIdA, userIdB, userIdB, userIdA);
+  return !!row;
+}
+
+app.post('/api/users/:id/block', requireAuth, blockLimiter, (req, res) => {
+  const targetId = req.params.id;
+  if (targetId === req.user.id) return res.status(400).json({ error: "You can't block yourself" });
+  const target = db.prepare('SELECT id FROM users WHERE id = ?').get(targetId);
+  if (!target) return res.status(404).json({ error: 'User not found' });
+  // INSERT OR IGNORE against the unique (blocker_id, blocked_id) index makes a repeat click on
+  // "Block" idempotent rather than a 500/constraint-violation error.
+  db.prepare('INSERT OR IGNORE INTO blocks (id, blocker_id, blocked_id) VALUES (?,?,?)')
+    .run(nanoid(), req.user.id, targetId);
+  res.json({ ok: true });
+});
+
+app.delete('/api/users/:id/block', requireAuth, blockLimiter, (req, res) => {
+  // Scoped to blocker_id = req.user.id — a user can only ever remove their OWN block record, never
+  // someone else's (there is no path here for user A to unblock on behalf of user B).
+  db.prepare('DELETE FROM blocks WHERE blocker_id = ? AND blocked_id = ?').run(req.user.id, req.params.id);
+  res.json({ ok: true });
+});
+
+app.get('/api/users/blocked', requireAuth, (req, res) => {
+  const rows = db.prepare(
+    `SELECT users.id, users.name, users.account_type, users.is_verified, blocks.created_at AS blocked_at
+     FROM blocks JOIN users ON blocks.blocked_id = users.id
+     WHERE blocks.blocker_id = ? ORDER BY blocks.created_at DESC`
+  ).all(req.user.id);
+  res.json(rows);
+});
+
 // ---------- reports ----------
 const REPORT_TARGET_TYPES = ['item', 'user', 'request', 'rating'];
 // Fixed reason categories rather than free text only — lets Report actually mean something
@@ -1209,7 +1260,7 @@ app.post('/api/reports', requireAuth, reportLimiter, (req, res) => {
 });
 
 // ---------- requests (reverse marketplace: post what you NEED) ----------
-app.get('/api/requests', (req, res) => {
+app.get('/api/requests', optionalAuth, (req, res) => {
   expireStaleListings();
   const { request_type, category, q, mine, urgent, location, sort } = req.query;
   // Same "mine" exception as /api/items above: owners of a "mine" query see their own closed
@@ -1231,17 +1282,20 @@ app.get('/api/requests', (req, res) => {
   // Default (no/unknown sort param) preserves the exact pre-existing order — urgent-first — so
   // this stays additive; only an explicit sort=newest/price_low opts into a different order.
   sql += ' ORDER BY ' + (REQUEST_SORTS[sort] || REQUEST_SORTS.urgent);
-  res.json(db.prepare(sql).all(...params));
+  let rows = db.prepare(sql).all(...params);
+  if (!mine && req.user) rows = rows.filter(r => !isBlockedEitherWay(req.user.id, r.user_id));
+  res.json(rows);
 });
 
 // Homepage priority section #1: urgent requests across both thing/service types.
-app.get('/api/requests/urgent', (req, res) => {
+app.get('/api/requests/urgent', optionalAuth, (req, res) => {
   expireStaleListings();
-  const rows = db.prepare(`SELECT requests.*, users.name AS owner_name, users.account_type AS owner_type, users.location AS owner_location, users.is_verified AS owner_verified
+  let rows = db.prepare(`SELECT requests.*, users.name AS owner_name, users.account_type AS owner_type, users.location AS owner_location, users.is_verified AS owner_verified
                             FROM requests JOIN users ON requests.user_id = users.id
                             WHERE requests.status = 'open' AND requests.is_urgent = 1
                             ORDER BY requests.created_at DESC
                             LIMIT 8`).all();
+  if (req.user) rows = rows.filter(r => !isBlockedEitherWay(req.user.id, r.user_id));
   res.json(rows);
 });
 
@@ -1249,6 +1303,7 @@ app.get('/api/requests/:id', optionalAuth, (req, res) => {
   const request = db.prepare(`SELECT requests.*, users.name AS owner_name, users.account_type AS owner_type, users.location AS owner_location, users.email AS owner_email, users.is_verified AS owner_verified
                                FROM requests JOIN users ON requests.user_id = users.id WHERE requests.id = ?`).get(req.params.id);
   if (!request) return res.status(404).json({ error: 'Not found' });
+  if (req.user && isBlockedEitherWay(req.user.id, request.user_id)) return res.status(404).json({ error: 'Not found' });
   // owner_email must only ever reach the requester themselves — anyone browsing/considering
   // offering help sees name/location/verified status only, never the requester's email. Contact
   // only ever happens through an accepted request_offer (see /api/my/request-offers-received),
@@ -1296,6 +1351,7 @@ app.post('/api/requests/:id/respond', requireAuth, (req, res) => {
   const request = db.prepare('SELECT * FROM requests WHERE id = ?').get(req.params.id);
   if (!request) return res.status(404).json({ error: 'Not found' });
   if (request.user_id === req.user.id) return res.status(400).json({ error: "Can't respond to your own request" });
+  if (isBlockedEitherWay(req.user.id, request.user_id)) return res.status(404).json({ error: 'Not found' });
   const id = nanoid();
   const { pickup_type, pickup_area, pickup_address, pickup_instructions } = req.body;
   db.prepare('INSERT INTO request_offers (id, request_id, responder_id, message, offered_price, pickup_type, pickup_area, pickup_address, pickup_instructions) VALUES (?,?,?,?,?,?,?,?,?)')

@@ -931,6 +931,7 @@ function renderNav() {
             <div class="user-menu-group-label">Account</div>
             <button type="button" role="menuitem" id="menuNotifBtn"><i data-lucide="bell"></i> Notifications</button>
             <button type="button" role="menuitem" id="menuPasswordBtn"><i data-lucide="lock"></i> Password &amp; Security</button>
+            <button type="button" role="menuitem" id="menuBlockedBtn"><i data-lucide="shield-off"></i> Blocked users</button>
             ${state.user.is_admin ? '<button type="button" role="menuitem" id="adminBtn"><i data-lucide="shield"></i> Admin</button>' : ''}
           </div>
           <div class="user-menu-divider"></div>
@@ -965,6 +966,7 @@ function renderNav() {
     $('#menuActivityBtn').onclick = () => { closeUserMenu(); openActivity(); };
     $('#menuNotifBtn').onclick = (e) => { e.stopPropagation(); toggleNotifPanel(); closeUserMenu(); };
     $('#menuPasswordBtn').onclick = () => { closeUserMenu(); openChangePasswordModal(); };
+    $('#menuBlockedBtn').onclick = () => { closeUserMenu(); openBlockedUsersModal(); };
     // Profile dropdown's outside-click/Escape-to-close behavior is unchanged — it was never
     // specific to the removed overflow button, it belongs to the dropdown itself.
     document.addEventListener('click', (e) => { if (!e.target.closest('#userMenuWrap')) closeUserMenu(); });
@@ -2456,6 +2458,35 @@ function openReportModal(targetType, targetId) {
   };
 }
 
+// ---------- blocked users (Trust & Safety) ----------
+async function openBlockedUsersModal() {
+  showModal(`<h2>🚫 Blocked users</h2><p class="hint">People you've blocked won't see your posts, and you won't see theirs.</p><div id="blockedUsersList" style="margin-top:12px">Loading...</div>`);
+  const list = $('#blockedUsersList');
+  try {
+    const users = await api('/api/users/blocked');
+    if (!users.length) { list.innerHTML = `<div class="empty">You haven't blocked anyone.</div>`; return; }
+    list.innerHTML = users.map(u => `
+      <div class="claim-row" data-uid="${escapeHtml(u.id)}">
+        <strong>${escapeHtml(u.name)}</strong>${u.is_verified ? ' <span class="verified-badge">✓ Verified</span>' : ''}
+        <div class="hint">Blocked ${escapeHtml((u.blocked_at || '').slice(0, 10))}</div>
+        <button type="button" class="ghost" data-unblock="${escapeHtml(u.id)}" style="margin-top:8px">Unblock</button>
+      </div>`).join('');
+    list.querySelectorAll('[data-unblock]').forEach(btn => {
+      btn.onclick = async () => {
+        btn.disabled = true;
+        try {
+          await api('/api/users/' + btn.dataset.unblock + '/block', { method: 'DELETE' });
+          btn.closest('[data-uid]').remove();
+          if (!list.querySelector('[data-uid]')) list.innerHTML = `<div class="empty">You haven't blocked anyone.</div>`;
+          loadItems(); loadRequests();
+        } catch (err) { btn.disabled = false; alert(err.message || 'Could not unblock this user.'); }
+      };
+    });
+  } catch (e) {
+    list.innerHTML = `<div class="empty">Could not load your blocked users.</div>`;
+  }
+}
+
 // ---------- admin dashboard (Trust & Safety V1) ----------
 // Lean, single-admin-operable moderation view: an open-reports queue with inline resolve/dismiss
 // and quick actions (close listing / ban reported user), plus a read-only moderation history tab.
@@ -2773,7 +2804,7 @@ async function openProfileModal(userId) {
         <div class="profile-stat"><div class="num">${p.food_count}</div><div class="label">Food donations</div></div>
         <div class="profile-stat"><div class="num">${p.total_count}</div><div class="label">Total contributions</div></div>
       </div>
-      ${state.user && state.user.id !== p.id ? `<a href="#" class="report-link" id="reportUserLink">🚩 Report this user</a>` : ''}
+      ${state.user && state.user.id !== p.id ? `<a href="#" class="report-link" id="reportUserLink">🚩 Report this user</a> <a href="#" class="report-link" id="blockUserLink" style="margin-left:14px">🚫 Block user</a>` : ''}
       <h3 style="margin-top:18px">Recent reviews</h3>
       <div class="hint" style="margin-bottom:8px">Reviewer identities are kept anonymous.</div>
       ${p.recent_reviews.length ? p.recent_reviews.map(r => `
@@ -2790,6 +2821,19 @@ async function openProfileModal(userId) {
     document.querySelectorAll('.report-review-link').forEach(link => {
       link.onclick = (e) => { e.preventDefault(); openReportModal('rating', link.dataset.rid); };
     });
+    const blockUserLink = $('#blockUserLink');
+    if (blockUserLink) blockUserLink.onclick = async (e) => {
+      e.preventDefault();
+      if (!confirm(`Block this user?\n\nYou won't see their posts or receive interactions from them. You can unblock them later from Settings.`)) return;
+      try {
+        await api('/api/users/' + p.id + '/block', { method: 'POST' });
+        closeModal();
+        alert(`${p.name} has been blocked.`);
+        // Their content may now be filtered out of whatever's currently loaded — refresh the
+        // relevant lists rather than leaving stale cards on screen.
+        loadItems(); loadRequests();
+      } catch (err) { alert(err.message || 'Could not block this user.'); }
+    };
   } catch (e) {
     $('#profileContent').innerHTML = `<div class="empty">Could not load this profile.</div>`;
   }
