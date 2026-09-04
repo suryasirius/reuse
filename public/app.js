@@ -1,5 +1,10 @@
 const state = {
   user: null, categories: [], businessCategories: [], serviceCategories: [],
+  // How many of the (now priority-ordered) businessCategories entries show immediately in the
+  // Business Surplus sidebar before a "More categories" toggle reveals the specialized/waste-stream
+  // rest. Comes from GET /api/me so the frontend never hardcodes the split. showAllBusinessCategories
+  // is purely a UI expand/collapse flag, reset whenever the section is switched.
+  businessCategoriesPrimaryCount: 0, showAllBusinessCategories: false,
   section: 'consumer', requestType: 'thing', urgentOnly: false, sort: '',
   items: [], requests: [], category: '', priceType: '', q: '', location: '',
   wishlist: new Set(), monthlyBadges: null,
@@ -14,7 +19,7 @@ const state = {
 
 const SECTION_HINTS = {
   consumer: "Give. Find. Reuse. Give away things you no longer need, or find useful items near you.",
-  business_waste: "Reusable surplus from businesses — office furniture, equipment, electronics, packaging and more — plus recurring byproducts like metal scrap, cow dung, and used cooking oil. Other businesses or farms can request them.",
+  business_waste: "Reusable surplus from businesses — office furniture, electronics, machinery, packaging, metal scrap, construction materials and more. Help reduce waste and build a sustainable future.",
   requests: "Post what you NEED instead of what you have — a thing or a service — and let nearby people fulfill it for free, rent, or payment."
 };
 
@@ -99,6 +104,7 @@ async function init() {
   state.user = me.user;
   state.categories = me.categories;
   state.businessCategories = me.business_categories;
+  state.businessCategoriesPrimaryCount = me.business_categories_primary_count || me.business_categories.length;
   state.serviceCategories = me.service_categories;
   renderNav();
   bindSectionTabs();
@@ -218,6 +224,7 @@ function bindSectionTabs() {
     ensureHomepageVisible();
     state.section = btn.dataset.section;
     state.category = ''; state.priceType = ''; state.q = ''; state.urgentOnly = false; state.sort = '';
+    state.showAllBusinessCategories = false;
     $('#search').value = '';
     $('#priceFilter').value = '';
     $('#filterUrgent').checked = false;
@@ -238,9 +245,23 @@ function bindReqTypeTabs() {
   });
 }
 
+// Hero headline text per section — only the Business Surplus one actually changes today (Give &
+// Take / Requests keep the existing static "Find useful things near you"); kept as a lookup so the
+// swap is data-driven rather than a scattered if/else.
+const HERO_HEADLINES = {
+  business_waste: 'Find business surplus near you'
+};
+const DEFAULT_HERO_HEADLINE = 'Find useful things near you';
+
 function applySectionUi() {
   const isRequests = state.section === 'requests';
   $('#sectionHint').textContent = SECTION_HINTS[state.section];
+  const isBusiness = state.section === 'business_waste';
+  document.querySelector('.hero-banner')?.classList.toggle('hero-business', isBusiness);
+  const headlineEl = $('#heroHeadline');
+  if (headlineEl) headlineEl.textContent = HERO_HEADLINES[state.section] || DEFAULT_HERO_HEADLINE;
+  renderHeroPopular();
+  renderHeroBusinessGrid();
   $('#reqTypeTabs').style.display = isRequests ? 'flex' : 'none';
   $('#priceFilter').style.display = isRequests ? 'none' : '';
   $('#trendingSection').innerHTML = '';
@@ -642,15 +663,62 @@ function bindTopBar() {
     state.section === 'requests' ? loadRequests() : loadItems();
     document.querySelector('.page-layout')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   };
-  // Hero "Popular:" quick-category shortcuts — same category filter as the sidebar/quick-row,
-  // just reachable straight from the hero.
-  document.querySelectorAll('.hero-popular-link').forEach(btn => btn.onclick = () => {
+}
+
+// Hero "Popular:" quick-category shortcuts — section-aware now (consumer vs Business Surplus show
+// different real categories), but still just the same category filter as the sidebar/quick-row,
+// reachable straight from the hero. Rendered fresh on every applySectionUi() call.
+const HERO_POPULAR_CONSUMER = [
+  { cat: 'Books & Media', label: 'Books' },
+  { cat: 'Furniture', label: 'Furniture' },
+  { cat: 'Electronics & Phones', label: 'Electronics' },
+  { cat: 'Vehicles', label: 'Bicycles' },
+  { cat: 'Baby & Kids', label: 'Toys' }
+];
+// Real, existing business_waste category values only (no invented categories). Food & Organic
+// Waste is included and labeled "Food Surplus" here specifically so food stays a highly visible
+// shortcut on the Business Surplus hero, per explicit request — it's still the same underlying
+// category value/filter, just a friendlier label for this one shortcut button.
+const HERO_POPULAR_BUSINESS = [
+  { cat: 'Metal Scrap (CNC/Machining)', label: 'Metal Scrap' },
+  { cat: 'Food & Organic Waste', label: 'Food Surplus' },
+  { cat: 'Packaging Material', label: 'Packaging' },
+  { cat: 'Business Equipment & Machinery', label: 'Industrial Machinery' },
+  { cat: 'Electronics & IT Equipment', label: 'IT Equipment' },
+  { cat: 'Construction Debris', label: 'Construction Materials' }
+];
+function renderHeroPopular() {
+  const row = $('#heroPopularRow');
+  if (!row) return;
+  const list = state.section === 'business_waste' ? HERO_POPULAR_BUSINESS : HERO_POPULAR_CONSUMER;
+  if (state.section === 'requests') { row.innerHTML = ''; return; }
+  row.innerHTML = `<span class="hero-popular-label">Popular:</span>` +
+    list.map(x => `<button type="button" class="hero-popular-link" data-cat="${escapeHtml(x.cat)}">${escapeHtml(x.label)}</button>`).join('');
+  row.querySelectorAll('.hero-popular-link').forEach(btn => btn.onclick = () => {
     state.category = btn.dataset.cat;
     renderCategories();
     renderQuickCategories();
     loadItems();
     document.querySelector('.page-layout')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   });
+}
+
+// Business Surplus hero — latest direction: a single cohesive collage photo (not category tiles),
+// per your explicit request to use the reference image itself rather than sourcing/compositing
+// separate stock photos. The asset at /assets/hero/business-surplus-collage.jpg is a crop of the
+// exact reference image you provided (the collage + "GOOD MATERIALS BRIGHTER TOMORROWS" text is
+// baked into that photo already, cropped clean of any UI chrome from the mockup). This function
+// just toggles visibility of that single <img> for business_waste vs. every other section — no
+// category tiles, no filtering logic here; the existing Popular row + sidebar categories (both
+// already real-category-driven) remain the actual filtering UI, unchanged.
+function renderHeroBusinessGrid() {
+  const wrap = $('#heroCategoryGrid');
+  if (wrap) { wrap.innerHTML = ''; wrap.setAttribute('aria-hidden', 'true'); }
+  const photo = $('#heroBusinessPhoto');
+  if (!photo) return;
+  const isBusiness = state.section === 'business_waste';
+  photo.setAttribute('aria-hidden', isBusiness ? 'false' : 'true');
+  photo.style.display = isBusiness ? '' : 'none';
 }
 
 // ---------- mobile bottom navigation + Post action sheet (nav redesign Stage 2) ----------
@@ -989,6 +1057,10 @@ const CATEGORY_ICONS = {
   'Construction Materials': 'hard-hat', 'Electronics & Phones': 'smartphone', 'Computers & Laptops': 'laptop', 'Furniture': 'sofa',
   'Vehicles': 'car', 'Clothing & Accessories': 'shirt', 'Kitchen & Appliances': 'utensils', 'Food (Surplus)': 'apple',
   'Tools & Equipment': 'wrench', 'Event Items & Decorations': 'party-popper', 'Other': 'package',
+  // previously fell back to the generic 'package' icon in the Business Surplus sidebar — filled in
+  // so each gets its own distinct icon there and in the Business Surplus hero category grid.
+  'Office Furniture & Fixtures': 'sofa', 'Business Equipment & Machinery': 'factory',
+  'Electronics & IT Equipment': 'laptop', 'Packaging Material': 'package', 'Retail / Event Surplus': 'store',
   // legacy category names (pre category-cleanup) — kept only so any raw/unmapped display of an
   // old stored value still resolves an icon instead of falling back to the generic package icon.
   'Toys & Kids': 'baby', 'Baby Products': 'baby',
@@ -1016,13 +1088,22 @@ function displayCategory(cat) { return LEGACY_CATEGORY_LABELS[cat] || cat; }
 // every other item (no separate button chrome) and just scrolls to the existing full category
 // sidebar — same underlying state.category / renderCategories() / loadItems() logic as before.
 const QUICK_CAT_VISIBLE = 6;
+// Food (Surplus) and Construction Materials are core ReUse Hub categories — guaranteed a slot in the
+// shortcut row (not just whichever happens to land in the first N) even if CATEGORIES is ever
+// reordered. Same underlying state.category / filtering logic either way, just which chips render.
+const PRIORITY_CATEGORIES = ['Food (Surplus)', 'Construction Materials'];
 function renderQuickCategories() {
   const row = $('#quickCategoriesRow');
   if (!row) return;
   if (state.section !== 'consumer') { row.innerHTML = ''; return; }
   const all = activeCategoryList();
-  const cats = all.slice(0, QUICK_CAT_VISIBLE);
-  const hasMore = all.length > QUICK_CAT_VISIBLE;
+  let cats = all.slice(0, QUICK_CAT_VISIBLE);
+  const missingPriority = PRIORITY_CATEGORIES.filter(c => all.includes(c) && !cats.includes(c));
+  if (missingPriority.length) {
+    const keep = cats.filter(c => !missingPriority.includes(c)).slice(0, Math.max(0, QUICK_CAT_VISIBLE - missingPriority.length));
+    cats = all.filter(c => keep.includes(c) || missingPriority.includes(c));
+  }
+  const hasMore = all.length > cats.length;
   row.innerHTML = cats.map(c => `
     <button type="button" class="quick-cat-btn${state.category === c ? ' active' : ''}" data-c="${escapeHtml(c)}">
       <span class="quick-cat-icon"><i data-lucide="${CATEGORY_ICONS[c] || 'package'}"></i></span>
@@ -1048,15 +1129,37 @@ function renderQuickCategories() {
   if (window.lucide) lucide.createIcons();
 }
 
+// Business Surplus only: the sidebar shows the priority-ordered categories first (real B2B surplus
+// streams) and tucks the specialized/waste-stream tail behind a "More categories" toggle, so the
+// same list/chip design just renders fewer of them until expanded. Consumer/requests sidebars are
+// unaffected — activeCategoryList() for those sections is short enough to show in full already.
+// Same chip markup, typography, icons, spacing, active-state styling and click->filter logic either
+// way; this only changes which/how many chips are present in the DOM.
+function visibleCategoriesFor(list) {
+  if (state.section !== 'business_waste') return { visible: list, hiddenCount: 0 };
+  const n = state.businessCategoriesPrimaryCount || list.length;
+  // If the currently-active filter is one of the "hidden" tail categories, keep the list expanded
+  // so its chip is still visible/selectable rather than disappearing on the user.
+  const activeIndex = list.indexOf(state.category);
+  if (state.showAllBusinessCategories || (activeIndex >= 0 && activeIndex >= n)) {
+    return { visible: list, hiddenCount: 0 };
+  }
+  return { visible: list.slice(0, n), hiddenCount: Math.max(0, list.length - n) };
+}
+
 function renderCategories() {
   const wrap = $('#categories');
+  const { visible, hiddenCount } = visibleCategoriesFor(activeCategoryList());
   wrap.innerHTML = `<span class="chip ${state.category === '' ? 'active' : ''}" data-c=""><span class="cat-icon"><i data-lucide="layout-grid"></i></span>All</span>` +
-    activeCategoryList().map(c => `<span class="chip ${state.category === c ? 'active' : ''}" data-c="${escapeHtml(c)}"><span class="cat-icon"><i data-lucide="${CATEGORY_ICONS[c] || 'package'}"></i></span>${escapeHtml(c)}</span>`).join('');
-  wrap.querySelectorAll('.chip').forEach(el => el.onclick = () => {
+    visible.map(c => `<span class="chip ${state.category === c ? 'active' : ''}${PRIORITY_CATEGORIES.includes(c) ? ' chip-priority' : ''}" data-c="${escapeHtml(c)}"><span class="cat-icon"><i data-lucide="${CATEGORY_ICONS[c] || 'package'}"></i></span>${escapeHtml(c)}</span>`).join('') +
+    (hiddenCount > 0 ? `<span class="chip chip-more" id="moreCategoriesBtn"><span class="cat-icon"><i data-lucide="more-horizontal"></i></span>More categories</span>` : '');
+  wrap.querySelectorAll('.chip[data-c]').forEach(el => el.onclick = () => {
     state.category = el.dataset.c;
     renderCategories();
     state.section === 'requests' ? loadRequests() : loadItems();
   });
+  const moreBtn = $('#moreCategoriesBtn');
+  if (moreBtn) moreBtn.onclick = () => { state.showAllBusinessCategories = true; renderCategories(); };
   if (window.lucide) lucide.createIcons();
 }
 
@@ -1432,7 +1535,15 @@ function thumbInnerHtml(item) {
   const first = (item.media && item.media[0]) || (item.media_url ? { url: item.media_url, media_type: item.media_type } : null);
   if (!first) return `<span class="thumb-emoji">📦</span>`;
   if (first.media_type === 'video') return `<video src="${first.url}" muted></video>`;
-  return `<img src="${first.url}" loading="lazy">`;
+  // thumb_url is a smaller, consistently 4:3-cropped/compressed variant generated server-side at
+  // publish time (see processApprovedImage() in server.js) — used as the card's primary image so a
+  // huge phone-camera original isn't shipped just to render a ~220px card. Falls back to the full
+  // `url` for any image published before this pipeline existed (thumb_url is NULL on those rows),
+  // so nothing breaks for pre-existing listings. srcset lets a high-DPI/larger card fall back up to
+  // the full-resolution version instead of upscaling the thumb.
+  const src = first.thumb_url || first.url;
+  const srcset = first.thumb_url ? `${first.thumb_url} 640w, ${first.url} 1920w` : '';
+  return `<img src="${src}"${srcset ? ` srcset="${srcset}" sizes="(max-width:640px) 45vw, 260px"` : ''} loading="lazy">`;
 }
 
 function itemPriceLabel(item) {

@@ -355,7 +355,13 @@ const itemMediaMigrations = {
   status: "ALTER TABLE item_media ADD COLUMN status TEXT DEFAULT 'approved'", // approved | pending_review
   moderation_note: "ALTER TABLE item_media ADD COLUMN moderation_note TEXT DEFAULT ''",
   moderated_at: "ALTER TABLE item_media ADD COLUMN moderated_at TEXT DEFAULT NULL",
-  moderated_by: "ALTER TABLE item_media ADD COLUMN moderated_by TEXT DEFAULT NULL" // admin user id, or 'auto' for an API decision
+  moderated_by: "ALTER TABLE item_media ADD COLUMN moderated_by TEXT DEFAULT NULL", // admin user id, or 'auto' for an API decision
+  // Image pipeline quality pass: a smaller, consistently-cropped/compressed variant generated at
+  // publish time (see processApprovedImage() in server.js), used for card thumbnails so a huge
+  // phone-camera original isn't shipped to a 220px card. NULL for any row published before this
+  // migration (old sharp-less rename) or if processing ever falls back — frontend falls back to the
+  // full `url` in that case, so nothing breaks for existing images.
+  thumb_url: "ALTER TABLE item_media ADD COLUMN thumb_url TEXT DEFAULT NULL"
 };
 for (const [col, sql] of Object.entries(itemMediaMigrations)) {
   if (!itemMediaColumns.includes(col)) db.exec(sql);

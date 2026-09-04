@@ -57,15 +57,28 @@
   <div class="hero-banner hero-banner-compact">
     <div class="hero-compact-row">
       <div class="hero-text-col">
-        <h1 class="hero-headline">Find useful things near you</h1>
+        <h1 class="hero-headline" id="heroHeadline">Find useful things near you</h1>
         <p class="hero-compact-title" id="sectionHint">Give away what you don't need. Find what you need. Help your community.</p>
       </div>
       <!-- Decorative hero illustration (desktop only — hidden on mobile via CSS so it never
            competes with the search bar there). Real photographic asset (armchair/lamp/plant/bicycle
            lifestyle scene, transparent edges) sourced by the user and placed at
-           public/assets/hero/reuse-hero.png, replacing the earlier inline-SVG placeholder. -->
+           public/assets/hero/reuse-hero.png, replacing the earlier inline-SVG placeholder.
+           Give & Take only — swapped out for #heroCategoryGrid on Business Surplus (see
+           .hero-banner.hero-business rules in styles.css). -->
       <div class="hero-illustration" aria-hidden="true">
         <img src="/assets/hero/reuse-hero.png" alt="" loading="eager">
+      </div>
+      <!-- Legacy tile-grid container — no longer used (kept only so any stray CSS/JS reference
+           doesn't break); the Business Surplus hero now uses a single collage photo instead, see
+           #heroBusinessPhoto below. Always emptied/hidden by renderHeroBusinessGrid() in app.js. -->
+      <div class="hero-category-grid" id="heroCategoryGrid" aria-hidden="true"></div>
+      <!-- Business Surplus single hero photo (real cropped collage image, not category tiles) —
+           shown only when state.section === 'business_waste', toggled by renderHeroBusinessGrid()
+           in app.js. All existing filtering stays in the Popular row below and the sidebar
+           categories; this is purely the visual. -->
+      <div class="hero-business-photo" id="heroBusinessPhoto" aria-hidden="true">
+        <img src="/assets/hero/business-surplus-collage.jpg" alt="Assorted business surplus items available on ReUse Hub, staged together in a warehouse — a sofa and office chair, a bicycle, desktop computers, stacked packaging boxes and pallets, industrial machinery, construction materials like bricks and blocks, metal pipes, and scrap metal" loading="eager">
       </div>
       <!-- Hero "Post an item" CTA removed — the header's "+ Post" is already the primary post
            action, and this button sat visually on top of the sofa/bicycle artwork. Artwork is
@@ -99,14 +112,11 @@
       <!-- Quick category shortcuts under the hero search, matching the reference's "Popular:"
            row — same category filter the sidebar/quick-categories row already uses, just a
            faster path to the top few from the hero itself. -->
-      <div class="hero-popular-row" id="heroPopularRow">
-        <span class="hero-popular-label">Popular:</span>
-        <button type="button" class="hero-popular-link" data-cat="Books & Media">Books</button>
-        <button type="button" class="hero-popular-link" data-cat="Furniture">Furniture</button>
-        <button type="button" class="hero-popular-link" data-cat="Electronics & Phones">Electronics</button>
-        <button type="button" class="hero-popular-link" data-cat="Vehicles">Bicycles</button>
-        <button type="button" class="hero-popular-link" data-cat="Baby & Kids">Toys</button>
-      </div>
+      <!-- Content populated per-section by renderHeroPopular() in app.js (consumer vs Business
+           Surplus shortcuts) — same #heroPopularRow element as before, just dynamic now instead of
+           a hardcoded consumer-only list, so it no longer shows the wrong categories on Business
+           Surplus. -->
+      <div class="hero-popular-row" id="heroPopularRow"></div>
     </div>
   </div>
 

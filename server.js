@@ -5,6 +5,14 @@ const { nanoid } = require('nanoid');
 const path = require('path');
 const multer = require('multer');
 const fs = require('fs');
+// Image pipeline quality pass: real re-encode/resize/thumbnail generation, run only on the true
+// uploaded bytes AFTER moderation has already evaluated them (see processApprovedImage() below) —
+// this does not change what moderation sees or how magic-byte validation works, both of which still
+// run on the original file untouched. sharp is optional at runtime: if it's not installed yet (e.g.
+// `npm install` hasn't been re-run after this change) or a given image fails to process for any
+// reason, publishing falls back to the old plain-rename behavior rather than breaking uploads.
+let sharp = null;
+try { sharp = require('sharp'); } catch { /* falls back to unprocessed publish below */ }
 const crypto = require('crypto');
 const rateLimit = require('express-rate-limit');
 const helmet = require('helmet');
@@ -180,7 +188,7 @@ function validateUploadedFiles(files) {
 // isn't shown their own pending photo either (kept simple for V1); they get a text count instead
 // (see pending_media_count below) so they at least know a review is in progress.
 function attachMedia(item) {
-  const media = db.prepare("SELECT id, url, media_type FROM item_media WHERE item_id = ? AND status = 'approved' ORDER BY position ASC").all(item.id);
+  const media = db.prepare("SELECT id, url, thumb_url, media_type FROM item_media WHERE item_id = ? AND status = 'approved' ORDER BY position ASC").all(item.id);
   item.media = media;
   const pending = db.prepare("SELECT COUNT(*) AS c FROM item_media WHERE item_id = ? AND status = 'pending_review'").get(item.id);
   item.pending_media_count = pending.c;
@@ -252,11 +260,50 @@ async function moderateWithSightengine(filePath) {
 }
 
 // Moves a validated, moderated file from quarantine into the public uploads directory it will
-// actually be served from, and returns the public-facing filename to store as item_media.url.
-function publishFromQuarantine(quarantinePath) {
-  const filename = path.basename(quarantinePath);
-  fs.renameSync(quarantinePath, path.join(uploadDir, filename));
-  return '/uploads/' + filename;
+// actually be served from. THUMB_MAX_WIDTH/HEIGHT match the 4:3 card crop already used everywhere
+// in the UI (see .card .thumb in styles.css) so the thumbnail is never re-cropped client-side —
+// just scaled. FULL_MAX_WIDTH caps only genuinely huge phone-camera originals (a typical modern
+// phone photo is 3000-4000px wide); anything already smaller is left at its own size
+// (withoutEnlargement), so a small/already-compressed source is never blown up or re-compressed
+// into looking worse.
+const THUMB_MAX_WIDTH = 640, THUMB_MAX_HEIGHT = 480; // 4:3, matches .card .thumb aspect-ratio
+const FULL_MAX_WIDTH = 1920; // lightbox/detail-gallery size — plenty for any screen, not the raw original
+async function processApprovedImage(quarantinePath, mimetype) {
+  const base = path.basename(quarantinePath, path.extname(quarantinePath));
+  const isPng = mimetype === 'image/png';
+  const fullName = `${base}${isPng ? '.png' : '.jpg'}`;
+  const thumbName = `${base}-thumb${isPng ? '.png' : '.jpg'}`;
+  if (!sharp) {
+    // No image-processing library available (not installed yet) — fall back to the original,
+    // unprocessed behavior: publish the file exactly as uploaded, no thumbnail variant.
+    fs.renameSync(quarantinePath, path.join(uploadDir, path.basename(quarantinePath)));
+    return { url: '/uploads/' + path.basename(quarantinePath), thumbUrl: null };
+  }
+  try {
+    const source = sharp(quarantinePath).rotate(); // .rotate() with no args = auto-orient from EXIF, then strip it
+    const fullPipeline = source.clone().resize({ width: FULL_MAX_WIDTH, withoutEnlargement: true });
+    const thumbPipeline = source.clone().resize({ width: THUMB_MAX_WIDTH, height: THUMB_MAX_HEIGHT, fit: 'cover', withoutEnlargement: true });
+    if (isPng) {
+      await fullPipeline.png({ compressionLevel: 8 }).toFile(path.join(uploadDir, fullName));
+      await thumbPipeline.png({ compressionLevel: 8 }).toFile(path.join(uploadDir, thumbName));
+    } else {
+      // jpeg and webp originals both normalize to jpeg output — one predictable format for every
+      // card/lightbox consumer, mozjpeg for meaningfully smaller files at the same visual quality.
+      await fullPipeline.jpeg({ quality: 87, mozjpeg: true }).toFile(path.join(uploadDir, fullName));
+      await thumbPipeline.jpeg({ quality: 78, mozjpeg: true }).toFile(path.join(uploadDir, thumbName));
+    }
+    try { fs.unlinkSync(quarantinePath); } catch {}
+    return { url: '/uploads/' + fullName, thumbUrl: '/uploads/' + thumbName };
+  } catch (err) {
+    // Corrupt/unusual file sharp can't decode, disk error, etc. — never let a processing failure
+    // block publishing. Fall back to the pre-processing behavior for this one file.
+    try {
+      fs.renameSync(quarantinePath, path.join(uploadDir, path.basename(quarantinePath)));
+      return { url: '/uploads/' + path.basename(quarantinePath), thumbUrl: null };
+    } catch {
+      return { url: '/uploads/' + path.basename(quarantinePath), thumbUrl: null };
+    }
+  }
 }
 
 // targetType/targetId tell the frontend what a click on this notification should open
@@ -366,23 +413,34 @@ const SERVICE_CATEGORIES = [
 // the identical items/claims exchange engine — this is a category-list expansion only, not a new
 // listing type or table. BUSINESS_SURPLUS_CATEGORIES (a subset) drives which categories show the
 // optional available_until/is_urgent fields on the post form.
+// Ordered as a professional B2B surplus marketplace, not a waste/recycling directory: the most
+// commercially relevant surplus streams (furniture, IT/electronics, machinery, packaging, retail
+// fixtures, metal/wood/textile offcuts) come first; specialized byproduct/waste-stream categories
+// are last so the frontend can tuck them behind a "More categories" toggle. Presentation-only
+// change — same 15 values as before, just reordered. No category was added, removed, or renamed,
+// so existing stored items/requests and BUSINESS_SURPLUS_CATEGORIES (a by-value subset below,
+// unaffected by order) keep filtering correctly.
 const BUSINESS_CATEGORIES = [
   'Office Furniture & Fixtures',
-  'Business Equipment & Machinery',
   'Electronics & IT Equipment',
+  'Business Equipment & Machinery',
   'Packaging Material',
   'Retail / Event Surplus',
   'Metal Scrap (CNC/Machining)',
   'Wood Scrap & Sawdust',
+  'Fabric & Textile Scrap',
+  'Other Industrial Byproduct',
+  // --- specialized / waste-stream categories (shown behind "More categories" on the frontend) ---
   'Cow Dung & Manure',
   'Used Cooking Oil',
   'Food & Organic Waste',
-  'Fabric & Textile Scrap',
   'Paper & Cardboard Waste',
   'Plastic Scrap',
-  'Construction Debris',
-  'Other Industrial Byproduct'
+  'Construction Debris'
 ];
+// How many of the entries above (from the start) count as "primary" and show immediately in the
+// Business Surplus sidebar before a "More categories" toggle is needed to reveal the rest.
+const BUSINESS_CATEGORIES_PRIMARY_COUNT = 9;
 const BUSINESS_SURPLUS_CATEGORIES = [
   'Office Furniture & Fixtures',
   'Business Equipment & Machinery',
@@ -617,7 +675,7 @@ app.post('/api/reset-password', passwordResetLimiter, (req, res) => {
 });
 
 app.get('/api/me', optionalAuth, (req, res) => {
-  res.json({ user: req.user || null, categories: CATEGORIES, business_categories: BUSINESS_CATEGORIES, service_categories: SERVICE_CATEGORIES });
+  res.json({ user: req.user || null, categories: CATEGORIES, business_categories: BUSINESS_CATEGORIES, business_categories_primary_count: BUSINESS_CATEGORIES_PRIMARY_COUNT, service_categories: SERVICE_CATEGORIES });
 });
 
 // Edit Profile: only name and location are editable here. Email is intentionally left out — changing
@@ -805,8 +863,14 @@ app.post('/api/items', requireAuth, upload.array('media', MAX_UPLOAD_FILES), asy
   const mediaResults = [];
   for (const f of files) {
     const decision = await moderateImage(f.path, f.mimetype);
-    const url = decision.status === 'approved' ? publishFromQuarantine(f.path) : '/uploads/' + f.filename;
-    mediaResults.push({ url, status: decision.status, note: decision.note });
+    if (decision.status === 'approved') {
+      const { url, thumbUrl } = await processApprovedImage(f.path, f.mimetype);
+      mediaResults.push({ url, thumbUrl, status: decision.status, note: decision.note });
+    } else {
+      // Still quarantined — no processing yet (nothing to display publicly until an admin approves
+      // it via /api/admin/images/:id/approve, which now runs the same processApprovedImage step).
+      mediaResults.push({ url: '/uploads/' + f.filename, thumbUrl: null, status: decision.status, note: decision.note });
+    }
   }
   const firstApproved = mediaResults.find(m => m.status === 'approved');
   const media_url = firstApproved ? firstApproved.url : '';
@@ -827,8 +891,8 @@ app.post('/api/items', requireAuth, upload.array('media', MAX_UPLOAD_FILES), asy
       sanitizePickupType(pickup_type), pickup_area || '', pickup_address || '', pickup_instructions || '',
       normalizedAvailableUntil, truthy(is_urgent) ? 1 : 0, sanitizeFoodPref(food_pref), edible && truthy(is_edible_food) ? 1 : 0);
   mediaResults.forEach((m, i) => {
-    db.prepare("INSERT INTO item_media (id, item_id, url, media_type, position, status, moderation_note, moderated_at, moderated_by) VALUES (?,?,?,?,?,?,?, datetime('now'), 'auto')")
-      .run(nanoid(), id, m.url, 'image', i, m.status, m.note);
+    db.prepare("INSERT INTO item_media (id, item_id, url, thumb_url, media_type, position, status, moderation_note, moderated_at, moderated_by) VALUES (?,?,?,?,?,?,?,?, datetime('now'), 'auto')")
+      .run(nanoid(), id, m.url, m.thumbUrl || null, 'image', i, m.status, m.note);
   });
   const item = db.prepare('SELECT * FROM items WHERE id = ?').get(id);
   res.json(attachMedia(item));
@@ -1658,16 +1722,25 @@ app.get('/api/admin/images/:id/file', requireAuth, requireAdmin, (req, res) => {
   res.sendFile(filePath);
 });
 
-app.post('/api/admin/images/:id/approve', requireAuth, requireAdmin, (req, res) => {
+app.post('/api/admin/images/:id/approve', requireAuth, requireAdmin, async (req, res) => {
   const media = db.prepare("SELECT * FROM item_media WHERE id = ? AND status = 'pending_review'").get(req.params.id);
   if (!media) return res.status(404).json({ error: 'Not found' });
   const quarantinePath = path.join(quarantineDir, path.basename(media.url));
-  try { if (fs.existsSync(quarantinePath)) fs.renameSync(quarantinePath, path.join(uploadDir, path.basename(media.url))); } catch {}
-  db.prepare("UPDATE item_media SET status = 'approved', moderated_at = datetime('now'), moderated_by = ? WHERE id = ?").run(req.user.id, media.id);
+  // Same processing as the auto-approve path (POST /api/items) — resize/thumbnail generation, with
+  // the same fallback-to-plain-rename if sharp isn't available or the file fails to process.
+  let publishedUrl = media.url, thumbUrl = null;
+  if (fs.existsSync(quarantinePath)) {
+    const mimetype = quarantinePath.endsWith('.png') ? 'image/png' : quarantinePath.endsWith('.webp') ? 'image/webp' : 'image/jpeg';
+    const result = await processApprovedImage(quarantinePath, mimetype);
+    publishedUrl = result.url;
+    thumbUrl = result.thumbUrl;
+  }
+  db.prepare("UPDATE item_media SET status = 'approved', url = ?, thumb_url = ?, moderated_at = datetime('now'), moderated_by = ? WHERE id = ?")
+    .run(publishedUrl, thumbUrl, req.user.id, media.id);
   // If the item didn't have a cover photo yet (its first image was the one pending), give it one now.
   const item = db.prepare('SELECT * FROM items WHERE id = ?').get(media.item_id);
   if (item && !item.media_url) {
-    db.prepare("UPDATE items SET media_url = ?, media_type = 'image' WHERE id = ?").run(media.url, item.id);
+    db.prepare("UPDATE items SET media_url = ?, media_type = 'image' WHERE id = ?").run(publishedUrl, item.id);
   }
   logModeration(req.user.id, 'approve_image', 'item', media.item_id, 'Approved image ' + media.id);
   res.json({ ok: true });

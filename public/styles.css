@@ -457,6 +457,91 @@ main{max-width:1800px;width:calc(100vw - 64px);margin:0 auto;padding:14px 12px 6
   cursor:pointer;text-decoration:none;transition:color .15s;
 }
 .hero-popular-link:hover{color:var(--pop);text-decoration:underline}
+
+/* ---------- Business Surplus hero (dark-green B2B variant of the same .hero-banner-compact
+   component) — every rule below is scoped under .hero-banner.hero-business (added/removed by
+   applySectionUi() only while state.section === 'business_waste'), so the Give & Take hero is
+   completely unaffected. Below 900px this falls back to the normal stacked flex layout; the
+   category grid just wraps onto its own row instead of being absolutely positioned. ---------- */
+.hero-banner.hero-business{
+  /* Dot pattern removed per your latest instruction — Home hero doesn't have one, so Business
+     Surplus now uses the same clean gradient-only treatment (dark-green background + photo, no
+     decorative overlay layer). */
+  background:linear-gradient(135deg,#0F3D2E 0%,#0A2E22 100%);
+  background-blend-mode:normal;
+}
+.hero-banner:not(.hero-business) .hero-category-grid{display:none}
+.hero-banner.hero-business .hero-illustration{display:none}
+.hero-banner.hero-business .hero-compact-row{flex-wrap:wrap}
+/* Business Surplus-only pill styling for the Popular row (Give & Take's own .hero-popular-link
+   above is untouched — that homepage is frozen). Small dark-translucent-green pills instead of
+   plain text links, per the latest spec; same underlying element/click handler either way. */
+.hero-banner.hero-business .hero-popular-link{
+  background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.16);
+  padding:6px 13px;border-radius:999px;font-weight:600;
+}
+.hero-banner.hero-business .hero-popular-link:hover{
+  background:rgba(255,255,255,.2);color:#fff;text-decoration:none;
+}
+/* Single collage hero photo — one real wide-panorama photo (from the reference image you supplied)
+   that in a single frame already shows sofa, bike, office chair/desk, computers, industrial
+   machinery, packaging/pallets, construction materials (bricks/blocks), metal pipes, scrap metal,
+   and a forklift — the full Business Surplus range, not individual clickable tiles.
+   Per your latest spec: no visible rectangular "image card" — the photo is full-bleed within the
+   hero (clipped only by .hero-banner's own rounded corners, not a separate boxed inset) and its
+   left edge is masked to transparent so the hero's own dark-green gradient/dot-pattern background
+   shows through underneath, i.e. the photo fades INTO the background rather than sitting on top of
+   it as a card. A secondary dark-green multiply wash sits on top of the photo (stronger on the
+   left) so the transition reads as one continuous surface and the white headline/search stay
+   legible over whatever part of the photo is behind them. object-position stays right-of-center
+   (62%) so cover-cropping keeps the scrap-metal bin and forklift on the right in frame. */
+.hero-business-photo{
+  position:absolute;inset:0;z-index:0;pointer-events:none;
+}
+.hero-business-photo img{
+  width:100%;height:100%;object-fit:cover;object-position:62% center;display:block;
+}
+/* Dark-green wash, strongest on the left (where the headline/search sit) fading to nearly clear on
+   the right (where the photo should read at full strength) — this is what makes the photo feel
+   blended into the green hero rather than a separate panel. */
+.hero-business-photo::after{
+  content:'';position:absolute;inset:0;pointer-events:none;
+  background:linear-gradient(90deg,
+    #0A2E22 0%, rgba(10,46,34,.94) 22%, rgba(10,46,34,.62) 40%,
+    rgba(10,46,34,.18) 58%, rgba(10,46,34,.04) 74%, transparent 100%);
+}
+@media (min-width:900px){
+  /* Height and search-bar sizing overrides removed per your latest instruction: Business Surplus
+     now inherits the exact same .hero-banner-compact height (318px / 330px at >=1200px, set further
+     up in this file) and the exact same .hero-search-wrap / .hero-search-wrap .searchbar rules
+     (width:72%/max-width:980px, min-height:56px) that the Home hero uses — no business-specific
+     override of either, so they're provably identical rather than independently tuned. Only
+     .hero-text-col keeps a width override (still needed so the headline column doesn't run under
+     the photo); that wasn't one of the three requested corrections. */
+  .hero-banner.hero-business .hero-text-col{width:44%;max-width:500px;z-index:2}
+  .hero-banner.hero-business .hero-business-photo{
+    /* .hero-compact-row sits inside .hero-banner-compact's own 32px/36px padding, so inset:0 alone
+       would leave a padding gap on every side instead of reaching the hero's true rounded edges
+       (same reason .hero-illustration above uses negative offsets). Bleeds to the outer edge on
+       top/right/bottom; left starts at 36% of the row so the photo occupies roughly the right
+       two-thirds, matching the "photo across the right side/background" spec. */
+    top:-30px;right:-34px;bottom:-30px;left:36%;
+    /* fade-to-transparent mask on the left ~40% so the underlying hero gradient shows through and
+       the photo has no hard left edge; fully opaque from ~48% onward. */
+    -webkit-mask-image:linear-gradient(90deg, transparent 0%, rgba(0,0,0,.25) 22%, rgba(0,0,0,.75) 34%, #000 48%);
+    mask-image:linear-gradient(90deg, transparent 0%, rgba(0,0,0,.25) 22%, rgba(0,0,0,.75) 34%, #000 48%);
+  }
+}
+/* Below 900px the photo falls into normal flow as its own full-width banner under the text/search
+   (no left-fade mask here — at this width the photo isn't sharing horizontal space with the
+   headline, so blending isn't needed; it just needs to read cleanly as a banner). */
+@media (max-width:899px){
+  .hero-business-photo{position:relative;inset:auto;min-height:220px;margin-top:16px;border-radius:16px;overflow:hidden}
+  .hero-business-photo::after{background:linear-gradient(180deg, rgba(10,46,34,0) 55%, rgba(10,46,34,.35) 100%)}
+}
+@media (max-width:639px){
+  .hero-business-photo{min-height:170px}
+}
 /* Browse view hides the hero row entirely and only keeps the search bar; without this, the
    fixed-height hero above would leave an empty box and the now-absolute search-wrap would
    collapse the container to 0 height (no in-flow children left to size it). Restores the
@@ -535,6 +620,15 @@ main{max-width:1800px;width:calc(100vw - 64px);margin:0 auto;padding:14px 12px 6
 .sidebar .chip:hover{background:var(--brand-softer);border-color:transparent;color:var(--text);transform:translateX(3px)}
 .sidebar .chip.active{background:var(--brand-light);color:var(--brand-dark);border-color:transparent;font-weight:800;box-shadow:0 3px 10px rgba(23,138,75,.16)}
 .sidebar .chip.active .cat-icon{filter:none}
+/* Core ReUse Hub categories (Food Surplus, Construction Materials) get slightly stronger hierarchy
+   than secondary categories — bolder label + a subtle brand-color accent bar — without changing
+   size, color palette, icon style, or spacing. Not applied on top of .active (already the strongest state). */
+.sidebar .chip.chip-priority:not(.active){font-weight:700;color:var(--text);box-shadow:inset 3px 0 0 var(--brand-light)}
+.sidebar .chip.chip-priority:not(.active) .cat-icon{color:var(--brand)}
+/* "More categories" expander (Business Surplus sidebar only) — same chip treatment as every other
+   row so it doesn't stand out as a different control, just italicized/dimmer to read as "reveal more"
+   rather than a selectable category. */
+.sidebar .chip.chip-more{font-style:italic;color:var(--muted-2)}
 .main-col{flex:1;min-width:0}
 
 /* ---------- eco impact panel (right sidebar) ---------- */
