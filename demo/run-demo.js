@@ -11,7 +11,7 @@ const fs = require('fs');
 
 const ROOT = path.join(__dirname, '..');
 const PORT = process.env.DEMO_PORT || '3300';
-const ADMIN_EMAIL = 'admin@demo.reusehub.local';
+const ADMIN_EMAIL = 'admin@demo.zineedo.local';
 
 const demoDbPath = path.join(ROOT, 'demo', 'demo.sqlite');
 if (!fs.existsSync(demoDbPath)) {
@@ -25,9 +25,9 @@ process.env.UPLOAD_DIR = 'demo/uploads';
 process.env.PORT = PORT;
 process.env.ADMIN_EMAILS = ADMIN_EMAIL;
 
-console.log(`\nStarting ReUse Hub in DEMO MODE at http://localhost:${PORT}`);
+console.log(`\nStarting Zineedo in DEMO MODE at http://localhost:${PORT}`);
 console.log('Using demo/demo.sqlite — your real data.sqlite is untouched.');
-console.log('Log in as admin@demo.reusehub.local (or any *@demo.reusehub.local account), password: Demo@1234\n');
+console.log('Log in as admin@demo.zineedo.local (or any *@demo.zineedo.local account), password: Demo@1234\n');
 
 process.chdir(ROOT);
 require(path.join(ROOT, 'server.js'));

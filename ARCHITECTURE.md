@@ -1,4 +1,4 @@
-# ReUse Hub — Architecture
+# Zineedo — Architecture
 
 _Last updated: 2026-08-20. This documents the codebase as it exists today — it's a reference, not a plan for changes._
 
@@ -113,7 +113,7 @@ Mobile vs desktop is handled almost entirely with `@media` queries and a `displa
 
 ## 6. Demo environment
 
-`demo/` is a fully separate sandbox: `run-demo.js` starts `server.js` with `DB_FILE`/`QUARANTINE_DIR`/`UPLOAD_DIR` env vars pointed at `demo/demo.sqlite` and `demo/uploads`, so it never touches the real `data.sqlite`. `seed-demo.js` creates demo accounts (`*@demo.reusehub.local`) and sample listings via the real `/api/signup` etc. endpoints (not direct DB inserts), so the demo exercises the actual API surface. `reset-demo.js` wipes and reseeds.
+`demo/` is a fully separate sandbox: `run-demo.js` starts `server.js` with `DB_FILE`/`QUARANTINE_DIR`/`UPLOAD_DIR` env vars pointed at `demo/demo.sqlite` and `demo/uploads`, so it never touches the real `data.sqlite`. `seed-demo.js` creates demo accounts (`*@demo.zineedo.local`) and sample listings via the real `/api/signup` etc. endpoints (not direct DB inserts), so the demo exercises the actual API surface. `reset-demo.js` wipes and reseeds.
 
 ## 7. What's not here
 

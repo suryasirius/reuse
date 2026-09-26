@@ -1,4 +1,4 @@
-# ReUse Hub — Project Status
+# Zineedo — Project Status
 
 _Last updated: 2026-08-12_
 

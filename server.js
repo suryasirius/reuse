@@ -17,6 +17,8 @@ const crypto = require('crypto');
 const rateLimit = require('express-rate-limit');
 const helmet = require('helmet');
 const db = require('./db');
+// LOCATION FOUNDATION V1: see geocoding.js for the provider abstraction itself.
+const { geocodeText, reverseGeocode, searchPlaces, isGeocodingConfigured, isValidLat, isValidLng, fuzzCoordinate } = require('./geocoding');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -40,14 +42,41 @@ function sessionCookieOptions() {
   };
 }
 
-function createSession(userId) {
-  const token = nanoid(32);
-  db.prepare("INSERT INTO sessions (token, user_id, expires_at) VALUES (?,?, datetime('now', '+30 days'))").run(token, userId);
-  return token;
-}
-
 function hashToken(rawToken) {
   return crypto.createHash('sha256').update(rawToken).digest('hex');
+}
+
+// PHASE 9A: bearer-token support for a future mobile client, layered onto the exact same
+// `sessions` table and hashing scheme used by web cookies -- no second sessions table, no
+// separate mobile-user concept, no duplicated auth logic. A request is authenticated via
+// EITHER the existing `token` cookie OR an `Authorization: Bearer <token>` header; cookie
+// wins if both are somehow present. The bearer token is never accepted from a query string
+// or request body -- only this one header -- so it can never leak into access logs, browser
+// history, or a referrer.
+function extractBearerToken(req) {
+  const header = req.headers.authorization;
+  if (!header || typeof header !== 'string') return null;
+  const match = header.match(/^Bearer (.+)$/);
+  if (!match) return null;
+  const token = match[1].trim();
+  return token ? token : null;
+}
+function getAuthToken(req) {
+  return req.cookies.token || extractBearerToken(req);
+}
+
+// PHASE 8 HARDENING: sessions.token now stores only a SHA-256 hash of the actual session token,
+// exactly the same pattern already used for password_reset_tokens.token_hash below — this file
+// already had the right idea for reset tokens but never applied it to sessions, which is the more
+// valuable target (a live session token IS an active login, not a one-time 30-minute-lived reset
+// link). The raw token is still what's issued in the cookie and never stored anywhere; only its hash
+// ever touches the database. This is defense-in-depth against a DB-read-level compromise (a leaked
+// backup file, a misconfigured admin export, a future SQL-injection-class bug elsewhere) — nanoid(32)
+// tokens are already unguessable, so the actual login flow is unaffected either way.
+function createSession(userId) {
+  const token = nanoid(32);
+  db.prepare("INSERT INTO sessions (token, user_id, expires_at) VALUES (?,?, datetime('now', '+30 days'))").run(hashToken(token), userId);
+  return token;
 }
 
 // Periodic cleanup so the sessions/reset-token tables don't grow forever. Runs in-process since
@@ -68,18 +97,43 @@ setInterval(cleanupExpired, 60 * 60 * 1000).unref();
 function rateLimitHandler(req, res) {
   res.status(429).json({ error: 'Too many requests. Please try again later.' });
 }
-const loginLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 10, standardHeaders: true, legacyHeaders: false, handler: rateLimitHandler });
-const signupLimiter = rateLimit({ windowMs: 60 * 60 * 1000, max: 10, standardHeaders: true, legacyHeaders: false, handler: rateLimitHandler });
-const verifyLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 5, standardHeaders: true, legacyHeaders: false, handler: rateLimitHandler });
-const passwordResetLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 5, standardHeaders: true, legacyHeaders: false, handler: rateLimitHandler });
-const ratingLimiter = rateLimit({ windowMs: 60 * 60 * 1000, max: 30, standardHeaders: true, legacyHeaders: false, handler: rateLimitHandler });
+// PHASE 8 HARDENING: DISABLE_RATE_LIMIT=1 is an explicit, opt-in-only escape hatch used solely by
+// this project's own automated test suites, several of which legitimately need to perform far more
+// requests in a few seconds than any real single user would in the limiter's window (e.g.
+// pagination_test.js alone creates 100+ items in one run purely to have enough fixture data to
+// paginate over) — a real abusive actor doing that IS exactly what these limiters exist to catch,
+// but a test harness generating fixtures is not that actor. This must never be set in a real
+// deployment; nothing in this file sets it automatically, and IS_PROD/NODE_ENV are deliberately NOT
+// used for this (an accidental NODE_ENV=test in a real environment must not silently disable every
+// rate limit — a separate, single-purpose, unambiguously-named flag is safer to reason about).
+const skipRateLimitInTest = () => process.env.DISABLE_RATE_LIMIT === '1';
+const loginLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 10, standardHeaders: true, legacyHeaders: false, handler: rateLimitHandler, skip: skipRateLimitInTest });
+const signupLimiter = rateLimit({ windowMs: 60 * 60 * 1000, max: 10, standardHeaders: true, legacyHeaders: false, handler: rateLimitHandler, skip: skipRateLimitInTest });
+const verifyLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 5, standardHeaders: true, legacyHeaders: false, handler: rateLimitHandler, skip: skipRateLimitInTest });
+const passwordResetLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 5, standardHeaders: true, legacyHeaders: false, handler: rateLimitHandler, skip: skipRateLimitInTest });
+const ratingLimiter = rateLimit({ windowMs: 60 * 60 * 1000, max: 30, standardHeaders: true, legacyHeaders: false, handler: rateLimitHandler, skip: skipRateLimitInTest });
 // "Light" per the profile design — this is a public, unauthenticated endpoint, so the limit exists
 // only to blunt bulk scraping, not to gate normal browsing.
-const profileLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 120, standardHeaders: true, legacyHeaders: false, handler: rateLimitHandler });
-const reportLimiter = rateLimit({ windowMs: 60 * 60 * 1000, max: 10, standardHeaders: true, legacyHeaders: false, handler: rateLimitHandler });
-const blockLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 30, standardHeaders: true, legacyHeaders: false, handler: rateLimitHandler });
-const accountUpdateLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 20, standardHeaders: true, legacyHeaders: false, handler: rateLimitHandler });
-const changePasswordLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 5, standardHeaders: true, legacyHeaders: false, handler: rateLimitHandler });
+const profileLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 120, standardHeaders: true, legacyHeaders: false, handler: rateLimitHandler, skip: skipRateLimitInTest });
+const reportLimiter = rateLimit({ windowMs: 60 * 60 * 1000, max: 10, standardHeaders: true, legacyHeaders: false, handler: rateLimitHandler, skip: skipRateLimitInTest });
+const blockLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 30, standardHeaders: true, legacyHeaders: false, handler: rateLimitHandler, skip: skipRateLimitInTest });
+const accountUpdateLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 20, standardHeaders: true, legacyHeaders: false, handler: rateLimitHandler, skip: skipRateLimitInTest });
+const changePasswordLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 5, standardHeaders: true, legacyHeaders: false, handler: rateLimitHandler, skip: skipRateLimitInTest });
+// LOCATION PICKER (Phase 2): both endpoints below are unauthenticated-accessible (no user-specific
+// data, no side effects — pure provider passthrough), so this limiter is the only thing standing
+// between the app and someone hammering the geocoding provider's quota through it. 30/15min is generous enough
+// for normal typing-driven search (the frontend also debounces) while blunting scripted abuse.
+const locationSearchLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 30, standardHeaders: true, legacyHeaders: false, handler: rateLimitHandler, skip: skipRateLimitInTest });
+// PHASE 8 HARDENING: POST /api/items and POST /api/requests had no rate limiter at all — flagged
+// as a known gap back in the Phase 3 upload-security audit but deliberately left unfixed at the
+// time pending an actual hardening pass (the concern then was "what's a legitimate posting rate?",
+// a product question). This isn't trying to answer that question now either — 30/hour is a
+// generous ceiling well above any plausible legitimate single-user posting rate (a real person
+// photographing and describing 30 separate listings in an hour is not realistic), so it only ever
+// blocks scripted/automated flooding, not a real user's normal usage. Item creation is also the
+// single most resource-intensive route in the app (multipart parsing, disk writes, optional
+// metered moderation API call), making it the highest-value target to protect first.
+const createListingLimiter = rateLimit({ windowMs: 60 * 60 * 1000, max: 30, standardHeaders: true, legacyHeaders: false, handler: rateLimitHandler, skip: skipRateLimitInTest });
 
 // UPLOAD_DIR mirrors DB_FILE — lets the demo environment store its sample photos in a separate
 // folder so they never land in the real public/uploads directory. Unset, this is identical to
@@ -146,7 +200,7 @@ const upload = multer({
 // claims). Deliberately NOT pulling in a full image-decoding library (e.g. sharp) for this pass —
 // magic-byte + declared-type agreement is enough to stop "disguised non-image file" attacks,
 // which is the actual threat here; real re-encoding is a heavier dependency worth its own review
-// later if ReUse Hub needs to also defend against maliciously crafted-but-valid image files
+// later if Zineedo needs to also defend against maliciously crafted-but-valid image files
 // (e.g. decompression bombs, polyglot files) rather than just disguised non-images.
 function verifyImageMagicBytes(filePath, mimetype) {
   const type = ALLOWED_IMAGE_TYPES[mimetype];
@@ -192,7 +246,73 @@ function attachMedia(item) {
   item.media = media;
   const pending = db.prepare("SELECT COUNT(*) AS c FROM item_media WHERE item_id = ? AND status = 'pending_review'").get(item.id);
   item.pending_media_count = pending.c;
-  return item;
+  return stripInternalGeoFields(item);
+}
+
+// ---------- Location Foundation V1: privacy boundary for the new coordinate columns ----------
+// LOCATION FOUNDATION: items.* and request_offers.* are SQL wildcards used throughout this file, so
+// the pickup_lat/pickup_lng/pickup_public_lat/pickup_public_lng/pickup_geo_precision/
+// pickup_geocoded_at/pickup_geocode_status columns added in db.js would otherwise flow straight
+// into every single response that selects a row with `items.*` or `request_offers.*` — including
+// ones that currently bypass stripExactPickup() entirely for an authorized owner/accepted-party
+// (see /api/items/:id, /api/claims/:id, /api/request-offers/:id, /api/my/request-offers-received,
+// /api/my/request-offers-sent). This phase deliberately does not expose ANY coordinate via ANY API
+// response yet — not even to the owner — because no frontend/search feature consumes them yet, so
+// there is no reason to create a new exposure surface before it's needed. Called unconditionally,
+// regardless of ownership/acceptance status, wherever an items or request_offers row reaches a
+// response (see call sites below and in attachMedia() above). This is enforcement, not just
+// convention — every wildcard-selecting route in this file has been checked against this function.
+const INTERNAL_GEO_FIELDS = [
+  'pickup_lat', 'pickup_lng', 'pickup_public_lat', 'pickup_public_lng',
+  'pickup_geo_precision', 'pickup_geocoded_at', 'pickup_geocode_status'
+];
+function stripInternalGeoFields(row) {
+  if (!row) return row;
+  for (const f of INTERNAL_GEO_FIELDS) delete row[f];
+  return row;
+}
+
+// ---------- Location Foundation V1: background (fire-and-forget) geocoding ----------
+// Neither of these is ever awaited by a route handler — geocoding must never add latency to or be
+// able to fail a signup, a profile edit, a post, or an offer. geocodeText() itself never throws
+// (see geocoding.js), and the .catch(() => {}) below is a final safety net around the DB write that
+// follows it, so a call site can just invoke this and move on. If GEOAPIFY_KEY isn't set, this is a
+// same-tick no-op (checked before the async hop) — the app works exactly as it does today.
+function backgroundGeocodeUserLocation(userId, locationText) {
+  if (!isGeocodingConfigured()) return;
+  geocodeText(locationText).then(result => {
+    db.prepare(`UPDATE users SET location_lat = ?, location_lng = ?, location_precision = ?, location_geocoded_at = datetime('now'), location_geocode_status = ? WHERE id = ?`)
+      .run(result.status === 'ok' ? result.lat : null, result.status === 'ok' ? result.lng : null,
+        result.status === 'ok' ? 'city' : null, result.status, userId);
+  }).catch(() => {});
+}
+
+// `table` is always one of the two literal strings 'items' or 'request_offers' passed by the call
+// sites below — never derived from request input — so interpolating it into the SQL text here is
+// safe. Prefers the exact pickup_address (precision 'exact'); falls back to the coarser pickup_area
+// only when no address was given (precision 'approximate'). The PUBLIC point is a fuzzed/rounded
+// version of the private one when an exact address was geocoded; when only the already-coarse
+// pickup_area was available, there's no more-precise source to fuzz away from, so public == private
+// in that case. Neither point is exposed by any API response yet (see stripInternalGeoFields above)
+// — this only computes and stores them for a future radius-search feature to consume.
+function backgroundGeocodePickup(table, rowId, pickupAddress, pickupArea) {
+  if (!isGeocodingConfigured()) return;
+  const hasAddress = !!(pickupAddress && String(pickupAddress).trim());
+  const source = hasAddress ? pickupAddress : pickupArea;
+  if (!source || !String(source).trim()) {
+    db.prepare(`UPDATE ${table} SET pickup_geocode_status = 'skipped' WHERE id = ?`).run(rowId);
+    return;
+  }
+  geocodeText(source).then(result => {
+    if (result.status !== 'ok') {
+      db.prepare(`UPDATE ${table} SET pickup_geocode_status = ? WHERE id = ?`).run(result.status, rowId);
+      return;
+    }
+    const precision = hasAddress ? 'exact' : 'approximate';
+    const pub = hasAddress ? fuzzCoordinate(result.lat, result.lng, 2) : { lat: result.lat, lng: result.lng };
+    db.prepare(`UPDATE ${table} SET pickup_lat = ?, pickup_lng = ?, pickup_public_lat = ?, pickup_public_lng = ?, pickup_geo_precision = ?, pickup_geocoded_at = datetime('now'), pickup_geocode_status = 'ok' WHERE id = ?`)
+      .run(result.lat, result.lng, pub.lat, pub.lng, precision, rowId);
+  }).catch(() => {});
 }
 
 // ---------- Image Moderation V1 ----------
@@ -326,20 +446,59 @@ function expireStaleListings() {
   db.prepare(`UPDATE items SET status = 'closed' WHERE status = 'available' AND available_until IS NOT NULL AND available_until < datetime('now')`).run();
 }
 
-// Content-Security-Policy is intentionally left off for now: app.js's dynamically-generated modal
-// markup relies on inline `style="..."` attributes in ~16 places (auth forms, post forms, item
-// detail, etc.). A strict style-src without 'unsafe-inline' would silently break those. Locking
-// that down properly means auditing/refactoring those call sites first — worth doing, but as its
-// own focused pass with full UI regression testing, not bundled into a security-hardening pass
-// where a subtle mistake could take down the whole site. Every other Helmet protection below is
-// safe to enable as-is and doesn't touch app.js at all.
+// PHASE 8 HARDENING: CSP was previously left off entirely (see the removed comment below, kept in
+// spirit here) because app.js's dynamically-generated modal markup relies on inline `style="..."`
+// attributes in ~16 places. Auditing every external resource this app actually loads (index.html,
+// app.js, styles.css) rather than refactoring those call sites out: there are exactly two external
+// <script src> tags (both this file's own /app.js and unpkg.com's lucide-icons bundle), no inline
+// <script> blocks and no inline onXxx="" HTML attributes anywhere in index.html (app.js attaches
+// all its handlers via .onclick = fn / addEventListener, which CSP's script-src does not restrict
+// at all — only literal inline <script> tags and eval-family calls are), and exactly two external
+// non-script origins in use: fonts.googleapis.com (the Inter stylesheet) and fonts.gstatic.com (the
+// actual font files it references). The frontend never calls Geoapify directly — geocoding/search/
+// reverse all proxy through this same server (see /api/location/*) — so no external connect-src
+// entry is needed for that. Given all of this, script-src can safely be 'self' + unpkg.com with NO
+// unsafe-inline and NO unsafe-eval; style-src needs 'unsafe-inline' for the inline style attributes
+// (a real, deliberate exception, not an oversight — eliminating it means refactoring every
+// dynamically-built modal to use classes instead, which is out of scope for a hardening pass per
+// this phase's own instructions not to undertake a frontend rewrite for this). object-src/frame-
+// ancestors are locked down since nothing in this app needs plugins or to be framed by another site.
+// LIMITATION: this sandbox has no real browser, so this CSP has been verified by static analysis of
+// every script/style/font/image reference in the shipped files (above), plus the existing DOM test
+// suite (which loads the real app.js/index.html and drives real clicks) still passing unchanged —
+// but jsdom does not actually enforce Content-Security-Policy response headers, so a real browser
+// has not observed this CSP in effect. A manual check in an actual browser (open the app, confirm no
+// CSP violation errors in devtools console while exercising modals/uploads/location picker) is
+// recommended before launch.
 app.use(helmet({
-  contentSecurityPolicy: false,
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'", 'https://unpkg.com'],
+      styleSrc: ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
+      fontSrc: ["'self'", 'https://fonts.gstatic.com'],
+      imgSrc: ["'self'", 'data:'],
+      connectSrc: ["'self'"],
+      objectSrc: ["'none'"],
+      baseUri: ["'self'"],
+      frameAncestors: ["'none'"]
+    }
+  },
   crossOriginEmbedderPolicy: false // would block the unpkg.com lucide-icons <script> otherwise
 }));
 
 app.use(express.json({ limit: '200kb' }));
 app.use(express.urlencoded({ extended: true, limit: '200kb' }));
+// PHASE 8 HARDENING (reliability): express.json()/express.urlencoded() only populate req.body when
+// the request's Content-Type header matches what they parse — a request sent with an unexpected or
+// missing Content-Type (e.g. text/plain, or a client bug) leaves req.body as `undefined`, not `{}`.
+// Every route handler in this file destructures fields straight off req.body (`const { title } =
+// req.body`), which throws a raw TypeError ("Cannot destructure property ... of undefined") when
+// req.body is undefined — an uncaught exception that fell through to the generic 500 fallback in the
+// central error handler below instead of the clean 400 a malformed request should get. This single
+// middleware closes that entire class of crash for every route at once, rather than defensively
+// checking `req.body || {}` at each of the ~30 call sites individually.
+app.use((req, res, next) => { if (req.body === undefined) req.body = {}; next(); });
 app.use(cookieParser());
 
 // /uploads gets its own static handler (mounted before the general one) so we can force
@@ -383,6 +542,29 @@ const CATEGORIES = [
 // name. Extend this map (don't add a second array) if another category is ever merged/renamed.
 const LEGACY_CATEGORY_MERGE = { 'Baby & Kids': ['Baby Products', 'Toys & Kids'] };
 function categoryFilterValues(cat) { return [cat, ...(LEGACY_CATEGORY_MERGE[cat] || [])]; }
+// All legacy category values ever merged into a canonical one, flattened — used below so an EDIT to
+// an old item/request that still carries a retired category name (e.g. 'Toys & Kids') isn't rejected
+// just because the current dropdown no longer offers that exact string.
+const ALL_LEGACY_CATEGORY_VALUES = Object.values(LEGACY_CATEGORY_MERGE).flat();
+
+// PHASE 8 HARDENING: category was previously accepted as any non-empty string with no enum check at
+// all — a launch-readiness data-integrity gap explicitly called out for this phase. This is NOT the
+// ambiguous case: the frontend's own post/edit forms are `<select>` dropdowns populated from exactly
+// these three canonical lists (see public/app.js: item forms use state.categories/state.businessCategories
+// depending on listing_type, request forms use state.categories/state.serviceCategories depending on
+// request_type) — there is no UI path today that can legitimately produce a category outside these
+// lists for a brand-new post. The only reason an out-of-list value can currently reach the database
+// at all is a direct API call bypassing the UI, which is exactly the case server-side validation
+// exists to close. Legacy values are still accepted (see ALL_LEGACY_CATEGORY_VALUES) so editing an
+// old item/request that predates a category rename doesn't newly break.
+function isValidItemCategory(category, listingType) {
+  const canonical = listingType === 'business_waste' ? BUSINESS_CATEGORIES : CATEGORIES;
+  return canonical.includes(category) || ALL_LEGACY_CATEGORY_VALUES.includes(category);
+}
+function isValidRequestCategory(category, requestType) {
+  const canonical = requestType === 'service' ? SERVICE_CATEGORIES : CATEGORIES;
+  return canonical.includes(category) || ALL_LEGACY_CATEGORY_VALUES.includes(category);
+}
 
 // Homepage priority sections: which categories feed each featured strip.
 // Final homepage order (confirmed with user): Urgent Requests -> Most Wanted (trending) -> Construction -> Educational.
@@ -520,17 +702,21 @@ const USER_FIELDS = 'id, name, email, account_type, location, is_verified, is_ad
 // Returns the session row only if it exists AND hasn't expired (checked in SQL against SQLite's
 // own clock, not Node's, so there's no risk of a JS/SQLite time-format mismatch). Deletes it if
 // expired so a stolen/old token can't be replayed indefinitely just by resending the cookie.
-function getLiveSession(token) {
+function getLiveSession(rawToken) {
+  const tokenHash = hashToken(rawToken);
   const session = db.prepare(
     "SELECT * FROM sessions WHERE token = ? AND (expires_at IS NULL OR expires_at >= datetime('now'))"
-  ).get(token);
+  ).get(tokenHash);
   if (session) return session;
-  db.prepare('DELETE FROM sessions WHERE token = ?').run(token);
+  db.prepare('DELETE FROM sessions WHERE token = ?').run(tokenHash);
   return null;
 }
 
 function requireAuth(req, res, next) {
-  const token = req.cookies.token;
+  // PHASE 9A: token now comes from either the web cookie or an Authorization: Bearer header
+  // (see getAuthToken above) -- everything else in this function is completely unchanged, so
+  // web and future-mobile requests are validated by the exact same code path.
+  const token = getAuthToken(req);
   if (!token) return res.status(401).json({ error: 'Not logged in' });
   const session = getLiveSession(token);
   if (!session) return res.status(401).json({ error: 'Session expired, please log in again' });
@@ -541,16 +727,19 @@ function requireAuth(req, res, next) {
     // ban (see /api/admin/users/:id/ban), so this path should rarely trigger — but it guarantees a
     // banned user is rejected on every subsequent authenticated request, not just at their next
     // login, covering races like a request already in flight when the ban happened.
-    db.prepare('DELETE FROM sessions WHERE token = ?').run(token);
+    db.prepare('DELETE FROM sessions WHERE token = ?').run(hashToken(token));
     return res.status(403).json({ error: 'Your account has been suspended.' });
   }
   req.user = user;
+  req.authToken = token;
   db.prepare("UPDATE users SET last_active_at = datetime('now') WHERE id = ?").run(user.id);
   next();
 }
 
 function optionalAuth(req, res, next) {
-  const token = req.cookies.token;
+  // PHASE 9A: same cookie-or-bearer resolution as requireAuth, so a future mobile client gets
+  // identical owner/public field visibility on read routes as the website does.
+  const token = getAuthToken(req);
   if (token) {
     const session = getLiveSession(token);
     if (session) {
@@ -559,9 +748,10 @@ function optionalAuth(req, res, next) {
         // Optional-auth routes are read-only/public-facing — a banned user shouldn't get any
         // "logged in" privileges there (e.g. owner-only pickup visibility), but there's no reason
         // to hard-fail a page view, so this just quietly treats them as logged out.
-        db.prepare('DELETE FROM sessions WHERE token = ?').run(token);
+        db.prepare('DELETE FROM sessions WHERE token = ?').run(hashToken(token));
       } else if (user) {
         req.user = user;
+        req.authToken = token;
         db.prepare("UPDATE users SET last_active_at = datetime('now') WHERE id = ?").run(user.id);
       }
     }
@@ -580,7 +770,12 @@ function requireAdmin(req, res, next) {
 // ---------- auth routes ----------
 app.post('/api/signup', signupLimiter, (req, res) => {
   const { name, email, password, account_type, location } = req.body;
-  if (!name || !email || !password) return res.status(400).json({ error: 'Missing fields' });
+  // PHASE 8 HARDENING: type-checked alongside the existing truthiness check -- a non-string,
+  // truthy value (an object/array) previously passed this check and then crashed with a raw
+  // TypeError at email.toLowerCase() a few lines down (500 instead of a clean 400).
+  if (typeof name !== 'string' || typeof email !== 'string' || typeof password !== 'string' || !name || !email || !password) {
+    return res.status(400).json({ error: 'Missing fields' });
+  }
   if (password.length < 6 || password.length > 72) return res.status(400).json({ error: 'Password must be 6-72 characters' });
   const existing = db.prepare('SELECT id FROM users WHERE email = ?').get(email.toLowerCase());
   if (existing) return res.status(400).json({ error: 'Email already registered' });
@@ -592,12 +787,21 @@ app.post('/api/signup', signupLimiter, (req, res) => {
   const token = createSession(id);
   res.cookie('token', token, sessionCookieOptions());
   res.json({ id, name, email, account_type: account_type === 'business' ? 'business' : 'individual', is_verified: 0, is_admin: isAdmin });
+  // LOCATION FOUNDATION: fire-and-forget, after the response is already sent — never delays signup.
+  if (location) backgroundGeocodeUserLocation(id, location);
 });
 
 app.post('/api/login', loginLimiter, (req, res) => {
   const { email, password } = req.body;
-  const user = db.prepare('SELECT * FROM users WHERE email = ?').get((email || '').toLowerCase());
-  if (!user || !bcrypt.compareSync(password || '', user.password_hash)) {
+  // PHASE 8 HARDENING: `(email || '')` still evaluates to a non-string TRUTHY value like an object,
+  // which then crashes at .toLowerCase() (500 instead of 400). Explicitly requiring a string first
+  // closes that, and bcrypt.compareSync also requires its input to be a string (a non-string
+  // password would throw there too).
+  if (typeof email !== 'string' || typeof password !== 'string') {
+    return res.status(400).json({ error: 'Invalid email or password' });
+  }
+  const user = db.prepare('SELECT * FROM users WHERE email = ?').get(email.toLowerCase());
+  if (!user || !bcrypt.compareSync(password, user.password_hash)) {
     return res.status(400).json({ error: 'Invalid email or password' });
   }
   // Check ban status only after the password has already been verified — checking it earlier
@@ -615,13 +819,26 @@ app.post('/api/login', loginLimiter, (req, res) => {
   }
   const token = createSession(user.id);
   res.cookie('token', token, sessionCookieOptions());
-  res.json({ id: user.id, name: user.name, email: user.email, account_type: user.account_type, is_verified: user.is_verified, is_admin: shouldBeAdmin });
+  const body = { id: user.id, name: user.name, email: user.email, account_type: user.account_type, is_verified: user.is_verified, is_admin: shouldBeAdmin };
+  // PHASE 9A: a future mobile client can't rely on cookies, so it opts into receiving the raw
+  // session token directly in the response body by sending `Accept: application/json` on the
+  // login request. The existing website never sends that header on this call (see public/app.js
+  // -- it only sets Content-Type), so this is purely additive and changes nothing for the web
+  // flow. The token is only ever placed here, in this one deliberate response, on this one
+  // request -- never logged, never echoed by any other route, never accepted back from a query
+  // string or body field.
+  const acceptsJson = (req.get('Accept') || '').toLowerCase().includes('application/json');
+  if (acceptsJson) body.token = token;
+  res.json(body);
 });
 
 app.post('/api/logout', (req, res) => {
-  const token = req.cookies.token;
-  if (token) db.prepare('DELETE FROM sessions WHERE token = ?').run(token);
-  res.clearCookie('token', sessionCookieOptions());
+  // PHASE 9A: resolves whichever session (cookie or bearer) made this request, so a mobile
+  // client's bearer session can be invalidated through this same existing route -- no second
+  // logout mechanism.
+  const token = getAuthToken(req);
+  if (token) db.prepare('DELETE FROM sessions WHERE token = ?').run(hashToken(token));
+  if (req.cookies.token) res.clearCookie('token', sessionCookieOptions());
   res.json({ ok: true });
 });
 
@@ -681,20 +898,91 @@ app.get('/api/me', optionalAuth, (req, res) => {
 // Edit Profile: only name and location are editable here. Email is intentionally left out — changing
 // it would need its own re-verification flow, which doesn't exist yet, so this doesn't pretend to
 // support it. account_type/is_admin/is_verified/is_banned are never client-settable.
+// Precision values a USER's own discovery location may ever be tagged with. 'exact' is
+// deliberately excluded — that concept belongs only to item/request pickup coordinates geocoded
+// from a specific street address (see db.js). A user's general location is never treated as an
+// exact, disclosable point, regardless of source (typed text, search selection, or device GPS).
+const USER_LOCATION_PRECISIONS = ['city', 'neighborhood', 'approximate'];
+
 app.patch('/api/me', requireAuth, accountUpdateLimiter, (req, res) => {
-  const { name, location } = req.body;
+  const { name, location, location_lat, location_lng, location_source, location_precision } = req.body;
   if (name !== undefined) {
     const trimmed = String(name).trim();
     if (!trimmed || trimmed.length > 80) return res.status(400).json({ error: 'Name must be 1-80 characters' });
     db.prepare('UPDATE users SET name = ? WHERE id = ?').run(trimmed, req.user.id);
   }
+
+  // PHASE 2 — LOCATION PICKER: the picker always sends `location` (the human-readable label the
+  // user confirmed) together with `location_lat`/`location_lng` in the same request, since it
+  // already resolved the coordinate itself (via search selection or reverse-geocoded GPS) — no
+  // need to re-geocode text we already have a fresh, known-good coordinate for. Both lat and lng
+  // must arrive together; the server re-validates the ranges itself regardless of what the client
+  // claims (per the location-foundation privacy rules — never trust client-supplied coordinates or
+  // precision blindly). A plain text-only edit (no coordinates) falls back to the original
+  // Phase-1 behavior: save the text, background-geocode it best-effort.
+  const coordsProvided = location_lat !== undefined || location_lng !== undefined;
+  if (coordsProvided) {
+    if (location_lat === undefined || location_lng === undefined) {
+      return res.status(400).json({ error: 'location_lat and location_lng must be provided together' });
+    }
+    const lat = parseFloat(location_lat), lng = parseFloat(location_lng);
+    if (!isValidLat(lat) || !isValidLng(lng)) {
+      return res.status(400).json({ error: 'Invalid coordinates' });
+    }
+    // GPS-sourced coordinates are always downgraded to 'approximate', overriding anything the
+    // client claims — a device's GPS reading is never treated as a publicly-exact point for a
+    // user's general discovery location. A search-sourced selection may claim a more specific
+    // precision, but only from the fixed whitelist below; anything else (including 'exact') is
+    // rejected in favor of the safe default.
+    const precision = location_source === 'gps'
+      ? 'approximate'
+      : (USER_LOCATION_PRECISIONS.includes(location_precision) ? location_precision : 'approximate');
+    db.prepare(`UPDATE users SET location_lat = ?, location_lng = ?, location_precision = ?, location_geocoded_at = datetime('now'), location_geocode_status = 'ok' WHERE id = ?`)
+      .run(lat, lng, precision, req.user.id);
+  }
+
+  let locationChanged = false;
   if (location !== undefined) {
     const trimmedLoc = String(location).trim();
     if (trimmedLoc.length > 120) return res.status(400).json({ error: 'Location must be under 120 characters' });
+    // LOCATION FOUNDATION: only re-geocode when the text actually changed — avoids an unnecessary
+    // provider request on every profile save that doesn't touch location (e.g. a name-only edit).
+    // Suppressed entirely when coordinates were provided directly above — re-geocoding the label
+    // text would be redundant work against a coordinate we already just saved.
+    locationChanged = !coordsProvided && trimmedLoc !== req.user.location;
     db.prepare('UPDATE users SET location = ? WHERE id = ?').run(trimmedLoc, req.user.id);
   }
   const user = db.prepare(`SELECT ${USER_FIELDS} FROM users WHERE id = ?`).get(req.user.id);
   res.json({ user });
+  if (locationChanged) backgroundGeocodeUserLocation(req.user.id, location);
+});
+
+// PHASE 2 — LOCATION PICKER: forward search suggestions. Unauthenticated-accessible (no
+// user-specific data returned, no side effects) — the location picker can reasonably be shown
+// before login, and gating it behind auth would add nothing privacy-relevant. Rate-limited (see
+// locationSearchLimiter) since this is a direct passthrough to a metered external provider.
+app.get('/api/location/search', locationSearchLimiter, async (req, res) => {
+  const q = String(req.query.q || '').trim();
+  if (!q) return res.json({ status: 'skipped', results: [] });
+  if (q.length > 200) return res.status(400).json({ error: 'Search text too long' });
+  const result = await searchPlaces(q);
+  // Never forward raw provider metadata or internal status strings the frontend doesn't need to
+  // act on beyond display — result.results already contains only label/lat/lng/precision.
+  res.json({ status: result.status, results: result.results });
+});
+
+// PHASE 2 — LOCATION PICKER: reverse geocode a device-supplied coordinate into a human-readable
+// label. Coordinates are validated server-side regardless of what the client sent — this is the
+// one place a client gets to supply raw coordinates at all in this app, so the validation here is
+// the actual security boundary, not the frontend's own range check (which exists only for a fast,
+// friendly error before a round-trip).
+app.post('/api/location/reverse', locationSearchLimiter, async (req, res) => {
+  const lat = parseFloat(req.body.lat), lng = parseFloat(req.body.lng);
+  if (!isValidLat(lat) || !isValidLng(lng)) {
+    return res.status(400).json({ error: 'Invalid coordinates' });
+  }
+  const result = await reverseGeocode(lat, lng);
+  res.json({ status: result.status, label: result.label, precision: result.precision });
 });
 
 // Password & Security: change password while already logged in (distinct from the forgot/reset-by-
@@ -713,7 +1001,7 @@ app.post('/api/change-password', requireAuth, changePasswordLimiter, (req, res) 
   db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(hash, req.user.id);
   // Revoke every OTHER session (e.g. a device you're not using right now) but keep this one alive,
   // so changing your password from a settings page doesn't also log you out of the tab you're on.
-  db.prepare('DELETE FROM sessions WHERE user_id = ? AND token != ?').run(req.user.id, req.cookies.token);
+  db.prepare('DELETE FROM sessions WHERE user_id = ? AND token != ?').run(req.user.id, hashToken(req.authToken));
   res.json({ ok: true });
 });
 
@@ -739,21 +1027,158 @@ app.post('/api/verify/confirm', requireAuth, verifyLimiter, (req, res) => {
 // A sort key can ONLY ever resolve through one of these maps — the raw req.query.sort value is
 // never concatenated into SQL. An unrecognized key silently falls back to the section's existing
 // default order rather than erroring, so a stale/bad client value can't break the page.
+// Phase 6: every entry ends in `id ASC` as a stable secondary tiebreak. created_at only has
+// whole-second precision (SQLite datetime('now')), so two rows created in the same second
+// previously had no defined relative order — harmless before pagination existed (the whole result
+// set always came back in one response, so a tie could only swap two rows' visual position), but
+// now that a row's PAGE depends on its position in the ordering, an undefined tiebreak could let
+// the same row appear on two different pages or vanish between them across two separate requests.
+// `id` is a random nanoid, carries no product/ranking meaning — this is a purely technical fix for
+// pagination stability, not a new ranking rule (see Phase 6 report, "Ordering").
 const ITEM_SORTS = {
-  newest: 'items.created_at DESC',
-  urgent: 'items.is_urgent DESC, items.created_at DESC',
-  price_low: 'items.price ASC, items.created_at DESC'
+  newest: 'items.created_at DESC, items.id ASC',
+  urgent: 'items.is_urgent DESC, items.created_at DESC, items.id ASC',
+  price_low: 'items.price ASC, items.created_at DESC, items.id ASC'
 };
 const REQUEST_SORTS = {
-  newest: 'requests.created_at DESC',
-  urgent: 'requests.is_urgent DESC, requests.created_at DESC',
-  price_low: 'requests.budget_amount ASC, requests.created_at DESC'
+  newest: 'requests.created_at DESC, requests.id ASC',
+  urgent: 'requests.is_urgent DESC, requests.created_at DESC, requests.id ASC',
+  price_low: 'requests.budget_amount ASC, requests.created_at DESC, requests.id ASC'
 };
+
+// ---------- Phase 5: nearby (radius) discovery ----------
+// Uses items.pickup_public_lat/pickup_public_lng — the already-fuzzed/rounded coordinate computed
+// by backgroundGeocodePickup() specifically for this purpose (see db.js's Location Foundation V1
+// comments: "intended to eventually back radius/distance search without ever revealing the real
+// pickup point"). The exact/private pickup_lat/pickup_lng are never read for this feature at all.
+// stripInternalGeoFields() (via attachMedia()) still deletes every raw coordinate field from every
+// response exactly as before — only a derived, rounded `distance_km` number is ever added to a row.
+//
+// Requests are deliberately NOT covered: the `requests` table has no pickup/location coordinate
+// columns at all (only items and request_offers do — see db.js). Implementing nearby search there
+// would require fabricating coordinates or a schema change, both out of scope for this phase (see
+// the Phase 5 report, "Product Decisions").
+//
+// radius_km is REQUIRED whenever lat/lng are supplied — no default radius is assumed. "Should
+// nearby search default to 5km or 10km?" is an explicit undecided product question called out in
+// the Phase 5 brief, so this implementation never silently picks one; the caller must always state
+// an explicit radius. MAX_NEARBY_RADIUS_KM is a conservative IMPLEMENTATION-level abuse/performance
+// bound only (not a product decision) — 200km comfortably covers "same metro area or a realistic
+// day-trip" for a reuse marketplace while preventing a client from requesting a near-global
+// bounding-box table scan.
+const MAX_NEARBY_RADIUS_KM = 200;
+const EARTH_RADIUS_KM = 6371;
+
+function haversineKm(lat1, lng1, lat2, lng2) {
+  const toRad = d => d * Math.PI / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLng = toRad(lng2 - lng1);
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
+  return EARTH_RADIUS_KM * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+// Parses/validates lat/lng/radius_km query params. { active: false } when none of the three are
+// present — existing behavior (every caller today) is completely unaffected. { active: false,
+// error } when the params are malformed/incomplete — callers must respond 400, never silently fall
+// back to "no nearby filter" for a request that looks like it was trying to use one.
+function parseNearbyParams(query) {
+  const { lat, lng, radius_km } = query;
+  const anyProvided = lat !== undefined || lng !== undefined || radius_km !== undefined;
+  if (!anyProvided) return { active: false };
+  if (lat === undefined || lng === undefined || radius_km === undefined) {
+    return { active: false, error: 'lat, lng, and radius_km must all be provided together for nearby search' };
+  }
+  const parsedLat = parseFloat(lat), parsedLng = parseFloat(lng), parsedRadius = parseFloat(radius_km);
+  if (!isValidLat(parsedLat) || !isValidLng(parsedLng)) {
+    return { active: false, error: 'Invalid coordinates' };
+  }
+  if (!Number.isFinite(parsedRadius) || parsedRadius < 0) {
+    return { active: false, error: 'radius_km must be zero or a positive number' };
+  }
+  if (parsedRadius > MAX_NEARBY_RADIUS_KM) {
+    return { active: false, error: `radius_km cannot exceed ${MAX_NEARBY_RADIUS_KM}` };
+  }
+  return { active: true, lat: parsedLat, lng: parsedLng, radiusKm: parsedRadius };
+}
+
+// Degrees-per-km bounding box around (lat, lng) for a given radius — a cheap SQL-level prefilter so
+// the exact Haversine distance (computed in JS below) only ever runs over a small candidate set,
+// never the whole table. Longitude degrees shrink toward the poles (cos(lat) term); latitude does
+// not, so no such adjustment is needed there. The Math.max(...,0.01) floor guards the near-pole
+// divide-by-near-zero case (not a realistic case for this app, but keeps the math from blowing up).
+function boundingBox(lat, lng, radiusKm) {
+  const latDelta = radiusKm / 111.32;
+  const lngDelta = radiusKm / (111.32 * Math.max(Math.cos(lat * Math.PI / 180), 0.01));
+  return { minLat: lat - latDelta, maxLat: lat + latDelta, minLng: lng - lngDelta, maxLng: lng + lngDelta };
+}
+
+// Applies the exact Haversine cutoff and attaches a derived `distance_km` field. Must run on the
+// RAW rows (items.* still present) BEFORE attachMedia()/stripInternalGeoFields() delete
+// pickup_public_lat/pickup_public_lng — distance_km is a new, separate, rounded property; the raw
+// coordinates it was computed from are still stripped from the response exactly as before, so this
+// adds no new coordinate exposure.
+function applyNearbyFilter(rows, nearby) {
+  if (!nearby.active) return rows;
+  return rows
+    .map(row => {
+      if (!isValidLat(row.pickup_public_lat) || !isValidLng(row.pickup_public_lng)) return null;
+      const distance = haversineKm(nearby.lat, nearby.lng, row.pickup_public_lat, row.pickup_public_lng);
+      if (distance > nearby.radiusKm) return null;
+      row.distance_km = Math.round(distance * 10) / 10;
+      return row;
+    })
+    .filter(Boolean);
+}
+
+// ---------- Phase 6: pagination ----------
+// DEFAULT_PAGE_SIZE/MAX_PAGE_SIZE are conservative IMPLEMENTATION-level defaults, not a product
+// decision — the frontend today sends neither `page` nor `limit` at all (confirmed by reading
+// loadItems()/loadRequests() in public/app.js: both do `state.items = items` / `state.requests =
+// requests` directly against the bare array response), so these values only ever apply to a NEW
+// caller that explicitly opts into paginated mode. 20/page mirrors a typical grid page; 100 is a
+// hard resource-protection ceiling so no caller can request the entire table in one response even
+// once pagination exists.
+const DEFAULT_PAGE_SIZE = 20;
+const MAX_PAGE_SIZE = 100;
+
+// Never throws, never produces an unbounded/negative result — every malformed input (missing,
+// empty string, "null", "abc", 0, negative, huge) safely clamps to a sane value rather than
+// erroring. This mirrors this app's own established convention for query-shape params (an
+// unrecognized `sort=` or empty `category=` also silently falls back rather than 400ing) — unlike
+// Phase 5's nearby lat/lng/radius_km, which intentionally 400s on malformed input because acting on
+// a wrong coordinate is materially worse than acting on a wrong page number.
+function parsePaginationParams(query) {
+  const rawPage = parseInt(query.page, 10);
+  const rawLimit = parseInt(query.limit, 10);
+  const page = Number.isFinite(rawPage) && rawPage >= 1 ? rawPage : 1;
+  let limit = Number.isFinite(rawLimit) && rawLimit >= 1 ? rawLimit : DEFAULT_PAGE_SIZE;
+  if (limit > MAX_PAGE_SIZE) limit = MAX_PAGE_SIZE;
+  return { page, limit };
+}
+
+// Slices an already fully-filtered, already-ordered, in-memory row array. This is deliberately NOT
+// a SQL LIMIT/OFFSET on the original query: block filtering (isBlockedEitherWay) happens in JS,
+// AFTER the SQL fetch, exactly as it already did before this phase (see the block-filter line in
+// both /api/items and /api/requests below) — pagination must slice AFTER that filter runs, or a
+// blocked user's rows would silently consume page slots and a full page could come back short (or
+// empty) even when enough *visible* records exist further down the unfiltered set. `total` and
+// `hasMore` are computed from this same already-filtered array, so they cost nothing extra (no
+// separate COUNT(*) query) and are always exactly accurate for what this caller is allowed to see.
+function paginate(rows, page, limit) {
+  const total = rows.length;
+  const start = (page - 1) * limit;
+  const items = rows.slice(start, start + limit);
+  return { items, page, limit, total, hasMore: start + limit < total };
+}
 
 // ---------- items ----------
 app.get('/api/items', optionalAuth, (req, res) => {
   expireStaleListings();
   const { category, price_type, q, mine, listing_type, location, urgent, sort } = req.query;
+  // Phase 5: nearby (radius) discovery. Validated up front — a malformed/partial lat+lng+radius_km
+  // combination is a 400, never a silent "ignore the geo params" fallback.
+  const nearby = parseNearbyParams(req.query);
+  if (nearby.error) return res.status(400).json({ error: nearby.error });
   // "mine" (My Posts dashboard) must show the owner's own closed/completed posts too, so the
   // status!='closed' exclusion below only applies to the public browse path. Public results
   // (no mine=) are completely unaffected — same query as before this change.
@@ -775,16 +1200,45 @@ app.get('/api/items', optionalAuth, (req, res) => {
   if (q) { sql += ' AND (items.title LIKE ? OR items.description LIKE ?)'; params.push(`%${q}%`, `%${q}%`); }
   if (urgent) { sql += ' AND items.is_urgent = 1'; }
   if (mine) { sql += ' AND items.user_id = ?'; params.push(mine); }
+  // Nearby: a cheap SQL-level bounding-box prefilter (indexless but bounded by the WHERE clause
+  // above too) — the exact Haversine cutoff runs in JS just below, over this already-small set.
+  if (nearby.active) {
+    const bbox = boundingBox(nearby.lat, nearby.lng, nearby.radiusKm);
+    sql += ' AND items.pickup_public_lat IS NOT NULL AND items.pickup_public_lng IS NOT NULL AND items.pickup_public_lat BETWEEN ? AND ? AND items.pickup_public_lng BETWEEN ? AND ?';
+    params.push(bbox.minLat, bbox.maxLat, bbox.minLng, bbox.maxLng);
+  }
   // Default (no/unknown sort param) preserves the exact pre-existing order — newest first —
   // so this is purely additive and can't change behavior for any caller that doesn't opt in.
   sql += ' ORDER BY ' + (ITEM_SORTS[sort] || ITEM_SORTS.newest);
   // List/browse view is always the "public" surface: never include exact pickup address/instructions
   // here, regardless of who's logged in. Exact info is only ever returned from the single-item
   // detail route below, and only to the owner or the accepted requester.
-  let rows = db.prepare(sql).all(...params).map(attachMedia).map(stripExactPickup);
+  let rows = db.prepare(sql).all(...params);
+  // Must run before attachMedia() strips pickup_public_lat/pickup_public_lng off each row.
+  rows = applyNearbyFilter(rows, nearby);
+  rows = rows.map(attachMedia).map(stripExactPickup);
   // Block filtering only applies to the public browse path — "mine" (My Posts) is always your own
   // items, irrelevant to any block relationship you might have with someone else.
   if (!mine && req.user) rows = rows.filter(item => !isBlockedEitherWay(req.user.id, item.user_id));
+  // Distance-ascending is the intuitive default for an active nearby search (see Phase 5 report,
+  // "Sorting") — but only when the caller didn't explicitly ask for a different sort; an explicit
+  // sort= always wins, exactly like today, nearby search or not. `id` is the same purely-technical
+  // tiebreak as ITEM_SORTS, for the same reason (pagination stability, not a ranking change).
+  if (nearby.active && !sort) {
+    rows.sort((a, b) => a.distance_km - b.distance_km || new Date(b.created_at) - new Date(a.created_at) || a.id.localeCompare(b.id));
+  }
+  // Phase 6: pagination is purely additive and opt-in. Every filter above (status, listing_type,
+  // category, block, moderation via attachMedia, Food Rescue expiry via expireStaleListings,
+  // nearby/radius) has already run by this point — pagination only ever slices what's left, last.
+  // A caller that sends neither `page` nor `limit` gets the EXACT same bare array response as
+  // always (verified in the Phase 6 regression suite) — zero behavior change for the existing
+  // frontend or any existing test. Only a caller that explicitly asks for a page gets the new
+  // `{ items, page, limit, total, hasMore }` shape.
+  const paginationRequested = req.query.page !== undefined || req.query.limit !== undefined;
+  if (paginationRequested) {
+    const { page, limit } = parsePaginationParams(req.query);
+    return res.json(paginate(rows, page, limit));
+  }
   res.json(rows);
 });
 
@@ -834,13 +1288,23 @@ app.get('/api/items/:id', optionalAuth, (req, res) => {
   res.json(isOwner || isAcceptedReceiver ? full : stripExactPickup(full));
 });
 
-app.post('/api/items', requireAuth, upload.array('media', MAX_UPLOAD_FILES), async (req, res) => {
+app.post('/api/items', requireAuth, createListingLimiter, upload.array('media', MAX_UPLOAD_FILES), async (req, res) => {
   const { title, description, category, condition, price_type, price, exchange_for, rent_rate, rent_period, deposit, is_recurring, frequency, quantity, listing_type, pickup_available, pickup_type, pickup_area, pickup_address, pickup_instructions,
     available_until, is_urgent, food_pref, is_edible_food } = req.body;
   const files = req.files || [];
-  if (!title || !description || !category) {
+  // PHASE 8 HARDENING: previously only checked truthiness (`!title`), which a non-empty NON-STRING
+  // value (an object, an array) still passes -- that value then reached better-sqlite3's .run() as a
+  // bind parameter, which only accepts numbers/strings/bigints/buffers/null and THROWS a TypeError
+  // for anything else (an object/array), crashing the request with a 500 instead of a clean 400.
+  // Requiring these three fields to actually be strings closes that crash path at the door.
+  if (typeof title !== 'string' || typeof description !== 'string' || typeof category !== 'string' || !title || !description || !category) {
     files.forEach(f => { try { fs.unlinkSync(f.path); } catch {} });
     return res.status(400).json({ error: 'Missing required fields' });
+  }
+  const itemListingType = listing_type === 'business_waste' ? 'business_waste' : 'consumer';
+  if (!isValidItemCategory(category, itemListingType)) {
+    files.forEach(f => { try { fs.unlinkSync(f.path); } catch {} });
+    return res.status(400).json({ error: 'Invalid category for this listing type' });
   }
   // Layer 2: confirm the bytes actually on disk match the claimed image type (fileFilter above
   // only checked the client-declared Content-Type, which is trivial to fake).
@@ -896,28 +1360,39 @@ app.post('/api/items', requireAuth, upload.array('media', MAX_UPLOAD_FILES), asy
   });
   const item = db.prepare('SELECT * FROM items WHERE id = ?').get(id);
   res.json(attachMedia(item));
+  // LOCATION FOUNDATION: fire-and-forget, after the response is already sent.
+  backgroundGeocodePickup('items', id, pickup_address, pickup_area);
 });
 
-app.get('/api/items-trending', (req, res) => {
+// AUDIT FIX: this route had no optionalAuth and never applied isBlockedEitherWay, so a blocked
+// user's items could still surface in the Trending strip even though the same block hides them
+// from /api/items and /api/items/urgent — inconsistent with the "this listing simply doesn't
+// exist for either side" rule stated everywhere else in this file. optionalAuth added so req.user
+// is populated when a session cookie is present; behavior for a logged-out request is unchanged.
+app.get('/api/items-trending', optionalAuth, (req, res) => {
   const { listing_type } = req.query;
-  const rows = db.prepare(`SELECT items.*, users.name AS owner_name, users.account_type AS owner_type, users.location AS owner_location
+  let rows = db.prepare(`SELECT items.*, users.name AS owner_name, users.account_type AS owner_type, users.location AS owner_location
                             FROM items JOIN users ON items.user_id = users.id
                             WHERE items.status != 'closed' AND items.request_count > 0 AND items.listing_type = ?
                             ORDER BY items.request_count DESC, items.created_at DESC
                             LIMIT 8`).all(listing_type === 'business_waste' ? 'business_waste' : 'consumer').map(attachMedia).map(stripExactPickup);
+  if (req.user) rows = rows.filter(item => !isBlockedEitherWay(req.user.id, item.user_id));
   res.json(rows);
 });
 
 // ---------- homepage priority sections: Education & Children's Needs, then Construction Site Leftovers ----------
-app.get('/api/home-highlights', (req, res) => {
+// AUDIT FIX: same gap as /api/items-trending above — no optionalAuth, no block filtering. Added
+// for consistency; a logged-out request's response is unchanged.
+app.get('/api/home-highlights', optionalAuth, (req, res) => {
   expireStaleListings();
   const result = HOME_HIGHLIGHT_GROUPS.map(group => {
     const placeholders = group.categories.map(() => '?').join(',');
-    const rows = db.prepare(`SELECT items.*, users.name AS owner_name, users.account_type AS owner_type, users.location AS owner_location, users.is_verified AS owner_verified
+    let rows = db.prepare(`SELECT items.*, users.name AS owner_name, users.account_type AS owner_type, users.location AS owner_location, users.is_verified AS owner_verified
                               FROM items JOIN users ON items.user_id = users.id
                               WHERE items.status != 'closed' AND items.listing_type = 'consumer' AND items.category IN (${placeholders})
                               ORDER BY items.created_at DESC
                               LIMIT 8`).all(...group.categories).map(attachMedia).map(stripExactPickup);
+    if (req.user) rows = rows.filter(item => !isBlockedEitherWay(req.user.id, item.user_id));
     return { key: group.key, label: group.label, icon: group.icon, items: rows };
   });
   res.json(result);
@@ -931,6 +1406,20 @@ app.patch('/api/items/:id', requireAuth, (req, res) => {
     available_until, is_urgent, food_pref, is_edible_food } = req.body;
 
   if (status) {
+    // PHASE 8 HARDENING: this previously accepted ANY string with zero validation — a client could
+    // PATCH status to an arbitrary value, or (more seriously) directly to 'claimed', a value that's
+    // supposed to only ever be set by the system when a claim is actually accepted (see PATCH
+    // /api/claims/:id above). That would leave an item marked claimed with no corresponding accepted
+    // claim — an inconsistent state nothing else in this file expects. items.status's own schema
+    // comment (db.js) documents exactly three values: available | claimed | closed. 'claimed' is
+    // system-managed only; the owner-facing transitions here are exactly the two this route's own
+    // existing code already handles by name below ('available' to repost, 'closed' to end a
+    // listing) — both already exercised by the existing test suite, so this whitelist changes
+    // nothing for any currently-passing case, it only rejects what was never a valid transition.
+    const OWNER_ITEM_STATUSES = ['available', 'closed'];
+    if (!OWNER_ITEM_STATUSES.includes(status)) {
+      return res.status(400).json({ error: `Invalid status. Must be one of: ${OWNER_ITEM_STATUSES.join(', ')}` });
+    }
     db.prepare('UPDATE items SET status = ? WHERE id = ?').run(status, req.params.id);
     // Reposting (marking available again) resets the expiry clock.
     if (status === 'available') db.prepare(`UPDATE items SET expires_at = datetime('now', '+${LISTING_LIFETIME_DAYS} days') WHERE id = ?`).run(req.params.id);
@@ -939,6 +1428,9 @@ app.patch('/api/items/:id', requireAuth, (req, res) => {
   if (title !== undefined) {
     const newPriceType = price_type || item.price_type;
     const newCategory = category || item.category;
+    if (category !== undefined && !isValidItemCategory(newCategory, item.listing_type)) {
+      return res.status(400).json({ error: 'Invalid category for this listing type' });
+    }
     // The edit form doesn't currently collect these fields (that UI wasn't part of this change),
     // so an edit preserves the item's existing food values unless a future PATCH explicitly
     // includes them — same "preserve if undefined" convention already used for pickup fields above.
@@ -972,6 +1464,14 @@ app.patch('/api/items/:id', requireAuth, (req, res) => {
   // The owner always gets the full row back (including exact pickup info) — this response only
   // ever goes to the authenticated owner, since the route is requireAuth + ownership-checked above.
   res.json(attachMedia(db.prepare('SELECT * FROM items WHERE id = ?').get(req.params.id)));
+  // LOCATION FOUNDATION: only re-geocode when pickup_address/pickup_area actually changed (mirrors
+  // the same "preserve if undefined" convention used above) — avoids re-geocoding on every edit that
+  // doesn't touch pickup location (e.g. a title/description-only edit).
+  const newPickupAddress = pickup_address !== undefined ? pickup_address : item.pickup_address;
+  const newPickupArea = pickup_area !== undefined ? pickup_area : item.pickup_area;
+  if (newPickupAddress !== item.pickup_address || newPickupArea !== item.pickup_area) {
+    backgroundGeocodePickup('items', req.params.id, newPickupAddress, newPickupArea);
+  }
 });
 
 app.delete('/api/items/:id', requireAuth, (req, res) => {
@@ -991,6 +1491,15 @@ app.delete('/api/items/:id', requireAuth, (req, res) => {
   media.forEach(m => {
     const filePath = path.join(__dirname, 'public', m.url);
     fs.unlink(filePath, () => {}); // best-effort; missing file shouldn't fail the request
+    // BUG FIX (Phase 3 upload security audit): m.thumb_url (the separate thumbnail variant
+    // generated by processApprovedImage()) was never unlinked here — only the full-size m.url —
+    // so every item deletion silently left an orphaned "-thumb.jpg/.png" file on disk forever.
+    // Pending-review media (never processed, no thumbnail generated yet) simply has thumb_url
+    // null/undefined, so this is a no-op for that case, matching existing best-effort semantics.
+    if (m.thumb_url) {
+      const thumbFilePath = path.join(__dirname, 'public', m.thumb_url);
+      fs.unlink(thumbFilePath, () => {});
+    }
   });
   res.json({ ok: true });
 });
@@ -1008,8 +1517,21 @@ app.post('/api/items/:id/claim', requireAuth, (req, res) => {
   // its deadline, but re-check the raw field too in case a claim lands in the narrow race window
   // between that closing pass and this request. Scoped only to the new available_until field so
   // this doesn't change claim behavior for any listing that isn't using Food Rescue deadlines.
+  // Checked BEFORE the general status check below so an expired food listing keeps this specific,
+  // more informative message rather than the generic one.
   if (item.available_until && item.available_until < db.prepare("SELECT datetime('now') AS n").get().n) {
     return res.status(400).json({ error: 'This food is past its pickup deadline and can no longer be requested' });
+  }
+  // BUG FIX (Food Rescue Phase 1 testing): a claim submitted after the item already moved to
+  // 'claimed' (owner accepted someone else) or 'closed' was previously accepted with no check at
+  // all — this route only ever validated self-claim/block/expiry, never item.status itself. A
+  // 'claimed' item still appears in public browse (only 'closed' is excluded, see GET /api/items),
+  // so anyone could keep submitting claims against food that's already been given away. This
+  // mirrors the state-consistency check CLAIM_TRANSITIONS already enforces one step later (on
+  // PATCH /api/claims/:id) — that route guards against re-processing a claim after its own status
+  // has moved; this route was missing the equivalent guard against the ITEM having moved.
+  if (item.status !== 'available') {
+    return res.status(400).json({ error: 'This item is no longer available' });
   }
   const id = nanoid();
   db.prepare('INSERT INTO claims (id, item_id, requester_id, message) VALUES (?,?,?,?)')
@@ -1052,6 +1574,18 @@ app.patch('/api/claims/:id', requireAuth, (req, res) => {
   if (!allowed.includes(status)) {
     return res.status(409).json({ error: `This request is already ${claim.status} and can't be changed to ${status}` });
   }
+  // BUG FIX (Phase 2 cross-cutting audit): CLAIM_TRANSITIONS only guards against re-processing
+  // THIS claim's own status — it never checked the ITEM's status. If more than one pending claim
+  // exists on the same item (duplicate claims are currently allowed; see the audit report), the
+  // owner could accept a SECOND claim after already accepting a first one, since the second claim
+  // row is still "pending" on its own. Both could then independently reach "completed", inflating
+  // completed_requests for what is really one item exchanged once. Declining is unaffected — an
+  // owner must always be able to decline/clean up a stale duplicate claim regardless of the item's
+  // status. This reuses the exact same rule/message already enforced at claim-creation time
+  // (POST /api/items/:id/claim) — an item must be "available" to become newly claimed.
+  if (status === 'accepted' && item.status !== 'available') {
+    return res.status(400).json({ error: 'This item is no longer available' });
+  }
   db.prepare('UPDATE claims SET status = ? WHERE id = ?').run(status, req.params.id);
   if (status === 'accepted') db.prepare('UPDATE items SET status = ? WHERE id = ?').run('claimed', item.id);
   notify(claim.requester_id, status === 'accepted' ? 'request_accepted' : 'request_declined',
@@ -1086,6 +1620,14 @@ app.post('/api/claims/:id/confirm', requireAuth, (req, res) => {
   }
 
   const field = isGiver ? 'giver_confirmed' : 'receiver_confirmed';
+  // BUG FIX (Notifications Phase 1 Step 5 testing): a caller who already confirmed calling this
+  // route again with confirmed:true re-ran the UPDATE and re-fired the exchange_confirmed
+  // notification to the other party on every repeat call, with no guard — the same duplicate-
+  // notification bug class the CLAIM_TRANSITIONS state-machine guard was added to prevent for
+  // accept/decline. If this party's own field is already set, treat it as a no-op repeat.
+  if (claim[field]) {
+    return res.json({ ok: true, status: claim.status, giver_confirmed: !!claim.giver_confirmed, receiver_confirmed: !!claim.receiver_confirmed });
+  }
   db.prepare(`UPDATE claims SET ${field} = 1 WHERE id = ?`).run(claim.id);
   const updated = db.prepare('SELECT * FROM claims WHERE id = ?').get(claim.id);
   let status = 'pending_confirmation';
@@ -1107,8 +1649,11 @@ app.get('/api/claims/:id', requireAuth, (req, res) => {
   const isReceiver = claim.requester_id === req.user.id;
   if (!isGiver && !isReceiver) return res.status(403).json({ error: 'Not part of this exchange' });
   // Exact pickup info is safe here — only the giver/receiver of this specific accepted exchange
-  // can reach this response.
-  res.json({ claim, item: claim.status === 'accepted' || claim.status === 'completed' ? item : stripExactPickup(item), role: isGiver ? 'giver' : 'receiver' });
+  // can reach this response. LOCATION FOUNDATION: this route builds `item` from a raw
+  // `SELECT * FROM items` rather than attachMedia() (which now strips the new coordinate columns),
+  // so stripInternalGeoFields() must be applied explicitly here too — unconditionally, same as
+  // everywhere else, since no coordinate is exposed via any API response yet.
+  res.json({ claim, item: stripInternalGeoFields(claim.status === 'accepted' || claim.status === 'completed' ? item : stripExactPickup(item)), role: isGiver ? 'giver' : 'receiver' });
 });
 
 // ---------- ratings (V1 trust system) ----------
@@ -1348,6 +1893,15 @@ app.get('/api/requests', optionalAuth, (req, res) => {
   sql += ' ORDER BY ' + (REQUEST_SORTS[sort] || REQUEST_SORTS.urgent);
   let rows = db.prepare(sql).all(...params);
   if (!mine && req.user) rows = rows.filter(r => !isBlockedEitherWay(req.user.id, r.user_id));
+  // Phase 6: same opt-in, additive pagination as /api/items — see the extended comment there.
+  // Requests have no geographic coordinates (confirmed in Phase 5), so there is no distance-sort
+  // interaction to preserve here; block/status filtering above still always runs before this.
+  const paginationRequested = req.query.page !== undefined || req.query.limit !== undefined;
+  if (paginationRequested) {
+    const { page, limit } = parsePaginationParams(req.query);
+    const paged = paginate(rows, page, limit);
+    return res.json({ requests: paged.items, page: paged.page, limit: paged.limit, total: paged.total, hasMore: paged.hasMore });
+  }
   res.json(rows);
 });
 
@@ -1376,9 +1930,18 @@ app.get('/api/requests/:id', optionalAuth, (req, res) => {
   res.json(isOwner ? request : stripExactPickup(request));
 });
 
-app.post('/api/requests', requireAuth, (req, res) => {
+app.post('/api/requests', requireAuth, createListingLimiter, (req, res) => {
   const { title, description, request_type, category, budget_type, budget_amount, exchange_for, quantity, is_urgent } = req.body;
-  if (!title || !description || !category) return res.status(400).json({ error: 'Missing required fields' });
+  // PHASE 8 HARDENING: mirrors the identical fix on POST /api/items above -- reject a non-string
+  // title/description/category with a clean 400 instead of letting an object/array reach
+  // better-sqlite3's .run() and crash with a raw TypeError (500).
+  if (typeof title !== 'string' || typeof description !== 'string' || typeof category !== 'string' || !title || !description || !category) {
+    return res.status(400).json({ error: 'Missing required fields' });
+  }
+  const reqType = request_type === 'service' ? 'service' : 'thing';
+  if (!isValidRequestCategory(category, reqType)) {
+    return res.status(400).json({ error: 'Invalid category for this request type' });
+  }
   const id = nanoid();
   db.prepare(`INSERT INTO requests (id, user_id, title, description, request_type, category, budget_type, budget_amount, exchange_for, quantity, is_urgent, expires_at)
               VALUES (?,?,?,?,?,?,?,?,?,?,?, datetime('now', '+${LISTING_LIFETIME_DAYS} days'))`)
@@ -1397,9 +1960,25 @@ app.patch('/api/requests/:id', requireAuth, (req, res) => {
   if (!request) return res.status(404).json({ error: 'Not found' });
   if (request.user_id !== req.user.id) return res.status(403).json({ error: 'Not your request' });
   const { status, title, description, category, budget_type, budget_amount, exchange_for, quantity, is_urgent } = req.body;
-  if (status) db.prepare('UPDATE requests SET status = ? WHERE id = ?').run(status, req.params.id);
+  if (status) {
+    // PHASE 8 HARDENING: mirrors the identical fix on PATCH /api/items/:id above. requests.status's
+    // schema comment documents open | fulfilled | closed; 'fulfilled' is system-managed only (set
+    // when an offer is accepted via PATCH /api/request-offers/:id), never something the requester
+    // should be able to set directly by PATCHing their own request. The only owner-facing
+    // transitions this route ever exercised are 'closed' (the only value the frontend currently
+    // sends) and 'open' (documented, symmetric with items' 'available' repost case) — both allowed.
+    const OWNER_REQUEST_STATUSES = ['open', 'closed'];
+    if (!OWNER_REQUEST_STATUSES.includes(status)) {
+      return res.status(400).json({ error: `Invalid status. Must be one of: ${OWNER_REQUEST_STATUSES.join(', ')}` });
+    }
+    db.prepare('UPDATE requests SET status = ? WHERE id = ?').run(status, req.params.id);
+  }
   if (title !== undefined) {
     const newBudgetType = budget_type || request.budget_type;
+    const newCategory = category || request.category;
+    if (category !== undefined && !isValidRequestCategory(newCategory, request.request_type)) {
+      return res.status(400).json({ error: 'Invalid category for this request type' });
+    }
     db.prepare(`UPDATE requests SET title=?, description=?, category=?, budget_type=?, budget_amount=?, exchange_for=?, quantity=?, is_urgent=? WHERE id=?`)
       .run(title, description || request.description, category || request.category, newBudgetType,
         newBudgetType === 'paid' ? (parseFloat(budget_amount) || 0) : 0,
@@ -1416,6 +1995,14 @@ app.post('/api/requests/:id/respond', requireAuth, (req, res) => {
   if (!request) return res.status(404).json({ error: 'Not found' });
   if (request.user_id === req.user.id) return res.status(400).json({ error: "Can't respond to your own request" });
   if (isBlockedEitherWay(req.user.id, request.user_id)) return res.status(404).json({ error: 'Not found' });
+  // BUG FIX (Requests Phase 1 testing): mirrors the identical fix already applied to
+  // POST /api/items/:id/claim — this route never checked request.status at all, so a request
+  // already 'fulfilled' (offer accepted) or manually 'closed' kept accepting brand-new offers with
+  // 200. A request that goes back to 'open' after a not_completed reversal is unaffected by this
+  // check (it IS 'open' again by then), so the legitimate re-response flow keeps working.
+  if (request.status !== 'open') {
+    return res.status(400).json({ error: 'This request is no longer open' });
+  }
   const id = nanoid();
   const { pickup_type, pickup_area, pickup_address, pickup_instructions } = req.body;
   db.prepare('INSERT INTO request_offers (id, request_id, responder_id, message, offered_price, pickup_type, pickup_area, pickup_address, pickup_instructions) VALUES (?,?,?,?,?,?,?,?,?)')
@@ -1424,6 +2011,8 @@ app.post('/api/requests/:id/respond', requireAuth, (req, res) => {
   db.prepare('UPDATE requests SET offer_count = offer_count + 1 WHERE id = ?').run(request.id);
   notify(request.user_id, 'new_offer', `${req.user.name} can help with "${request.title}"`, null, 'offer', id);
   res.json({ ok: true, id });
+  // LOCATION FOUNDATION: fire-and-forget, after the response is already sent.
+  backgroundGeocodePickup('request_offers', id, pickup_address, pickup_area);
 });
 
 app.get('/api/my/request-offers-received', requireAuth, (req, res) => {
@@ -1432,14 +2021,19 @@ app.get('/api/my/request-offers-received', requireAuth, (req, res) => {
                             WHERE requests.user_id = ? ORDER BY request_offers.created_at DESC`).all(req.user.id);
   // Exact pickup location for an offer is only shown to the request owner once that offer is
   // accepted — same rule as items (approximate only while still deciding between offers).
-  res.json(rows.map(r => (r.status === 'accepted' || r.status === 'completed') ? r : stripExactPickup(r)));
+  // LOCATION FOUNDATION: request_offers.* also now carries the new coordinate columns — stripped
+  // unconditionally, same as everywhere else, regardless of acceptance status.
+  res.json(rows.map(r => stripInternalGeoFields((r.status === 'accepted' || r.status === 'completed') ? r : stripExactPickup(r))));
 });
 
 app.get('/api/my/request-offers-sent', requireAuth, (req, res) => {
   const rows = db.prepare(`SELECT request_offers.*, requests.title AS request_title, requests.status AS request_status
                             FROM request_offers JOIN requests ON request_offers.request_id = requests.id
                             WHERE request_offers.responder_id = ? ORDER BY request_offers.created_at DESC`).all(req.user.id);
-  res.json(rows);
+  // LOCATION FOUNDATION: this is the responder's own submitted offer, so pickup_address itself was
+  // already safe to return here — but the new coordinate columns are stripped anyway, since no
+  // response anywhere exposes them yet in this phase.
+  res.json(rows.map(stripInternalGeoFields));
 });
 
 // Same authoritative-state-transition rule as CLAIM_TRANSITIONS above.
@@ -1454,6 +2048,13 @@ app.patch('/api/request-offers/:id', requireAuth, (req, res) => {
   const allowed = OFFER_TRANSITIONS[offer.status] || [];
   if (!allowed.includes(status)) {
     return res.status(409).json({ error: `This offer is already ${offer.status} and can't be changed to ${status}` });
+  }
+  // BUG FIX (Phase 2 cross-cutting audit): mirrors the identical fix already applied to
+  // PATCH /api/claims/:id — OFFER_TRANSITIONS only guards this offer's own status, never the
+  // parent request's status, so a second (duplicate) pending offer could still be accepted after
+  // the request was already fulfilled by a different offer. Declining is unaffected.
+  if (status === 'accepted' && request.status !== 'open') {
+    return res.status(400).json({ error: 'This request is no longer open' });
   }
   db.prepare('UPDATE request_offers SET status = ? WHERE id = ?').run(status, req.params.id);
   if (status === 'accepted') db.prepare('UPDATE requests SET status = ? WHERE id = ?').run('fulfilled', request.id);
@@ -1485,6 +2086,12 @@ app.post('/api/request-offers/:id/confirm', requireAuth, (req, res) => {
   }
 
   const field = isGiver ? 'giver_confirmed' : 'receiver_confirmed';
+  // BUG FIX (Notifications Phase 1 Step 5 testing): mirrors the identical fix already applied to
+  // POST /api/claims/:id/confirm — repeated confirmed:true calls from an already-confirmed party
+  // were re-firing exchange_confirmed to the other party on every call. No-op if already set.
+  if (offer[field]) {
+    return res.json({ ok: true, status: offer.status, giver_confirmed: !!offer.giver_confirmed, receiver_confirmed: !!offer.receiver_confirmed });
+  }
   db.prepare(`UPDATE request_offers SET ${field} = 1 WHERE id = ?`).run(offer.id);
   const updated = db.prepare('SELECT * FROM request_offers WHERE id = ?').get(offer.id);
   let status = 'pending_confirmation';
@@ -1505,7 +2112,8 @@ app.get('/api/request-offers/:id', requireAuth, (req, res) => {
   const isGiver = offer.responder_id === req.user.id;
   const isReceiver = request.user_id === req.user.id;
   if (!isGiver && !isReceiver) return res.status(403).json({ error: 'Not part of this exchange' });
-  res.json({ offer: offer.status === 'accepted' || offer.status === 'completed' ? offer : stripExactPickup(offer), request, role: isGiver ? 'giver' : 'receiver' });
+  // LOCATION FOUNDATION: same unconditional strip as every other request_offers.*-selecting route.
+  res.json({ offer: stripInternalGeoFields(offer.status === 'accepted' || offer.status === 'completed' ? offer : stripExactPickup(offer)), request, role: isGiver ? 'giver' : 'receiver' });
 });
 
 // ---------- impact metrics (KPIs from the founder bible) ----------
@@ -1815,4 +2423,49 @@ app.use((err, req, res, next) => {
   });
 });
 
-app.listen(PORT, () => console.log(`Reuse Hub running at http://localhost:${PORT}`));
+// PHASE 8 HARDENING: operational visibility for the two failure modes that previously had no log
+// line at all — an unhandled promise rejection (silently swallowed by default in modern Node,
+// meaning a real bug could run forever unnoticed) and an uncaught synchronous exception (Node's
+// default behavior already prints a stack trace and exits, but with no consistent log prefix to grep
+// for). Neither handler changes existing behavior beyond adding a clear log line: an uncaught
+// exception still exits the process afterward (matching Node's own default — this app has no
+// in-memory state worth trying to preserve through a crash; every durable fact already lives in
+// SQLite), and an unhandled rejection is logged but does not exit, since Node doesn't either by
+// default and changing that here could turn an unrelated minor bug into a full outage.
+process.on('unhandledRejection', (reason) => {
+  console.error('[unhandled rejection]', reason);
+});
+process.on('uncaughtException', (err) => {
+  console.error('[uncaught exception]', err);
+  process.exit(1);
+});
+
+const server = app.listen(PORT, () => console.log(`Zineedo running at http://localhost:${PORT}`));
+
+// PHASE 8 HARDENING: this process previously had no shutdown handling at all — SIGTERM/SIGINT
+// (what any process manager or `docker stop` sends) would hard-kill the process mid-request rather
+// than letting in-flight requests finish, and never explicitly closed the SQLite connection or the
+// hourly cleanup interval. server.close() stops accepting new connections and lets active ones
+// finish naturally; the interval is already .unref()'d (see cleanupExpired above) so it was never
+// actually keeping the process alive, but clearing it explicitly here is still the correct, complete
+// shutdown rather than relying on that as an implicit side effect. db.close() flushes SQLite's WAL
+// file cleanly rather than leaving it to whatever happens on process exit. A 10s hard-exit fallback
+// guards against a request that never finishes (e.g. a stuck upstream call) blocking shutdown forever.
+let shuttingDown = false;
+function gracefulShutdown(signal) {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  console.log(`[shutdown] ${signal} received, closing server...`);
+  const forceExit = setTimeout(() => {
+    console.error('[shutdown] graceful shutdown timed out, forcing exit');
+    process.exit(1);
+  }, 10000);
+  forceExit.unref();
+  server.close(() => {
+    try { db.close(); } catch (err) { console.error('[shutdown] error closing database:', err); }
+    console.log('[shutdown] closed cleanly');
+    process.exit(0);
+  });
+}
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));

@@ -8,7 +8,8 @@
     "test": "echo \"Error: no test specified\" && exit 1",
     "demo": "node demo/run-demo.js",
     "demo:seed": "node demo/seed-demo.js",
-    "demo:reset": "node demo/reset-demo.js"
+    "demo:reset": "node demo/reset-demo.js",
+    "backup:db": "node scripts/backup-db.js"
   },
   "keywords": [],
   "author": "",

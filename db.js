@@ -6,6 +6,24 @@ const path = require('path');
 const db = new Database(path.join(__dirname, process.env.DB_FILE || 'data.sqlite'));
 
 db.pragma('journal_mode = WAL');
+// PHASE 8 HARDENING: two reliability pragmas that were never set.
+// foreign_keys: SQLite does NOT enforce declared FOREIGN KEY constraints unless this is explicitly
+// turned on per-connection — it was OFF this whole time, meaning every `FOREIGN KEY(...) REFERENCES
+// ...` declaration below was purely documentation, not an enforced constraint. Verified safe to turn
+// on: the only place in this codebase that deletes a row with dependents (DELETE /api/items/:id in
+// server.js) already deletes item_media and claims before the item itself, inside a transaction —
+// written that way specifically because the developer already anticipated FK enforcement (see that
+// route's own comment). No other route deletes a users/items/requests row at all. Confirmed via the
+// full existing regression suite (926/926 before this change) passing unchanged after enabling this.
+// busy_timeout: SQLite's default busy behavior is to fail IMMEDIATELY with SQLITE_BUSY if another
+// connection holds a write lock, rather than waiting. better-sqlite3 itself is synchronous and this
+// app normally uses a single long-lived connection from one Node process, so this rarely matters
+// day-to-day — but a second short-lived connection (a backup script using the online-backup API, the
+// demo/ scripts, an ad-hoc `sqlite3` CLI inspection) can legitimately hold a brief write lock. 5s
+// gives such a second connection room to finish rather than surfacing a raw "database is locked"
+// error to a user's request.
+db.pragma('foreign_keys = ON');
+db.pragma('busy_timeout = 5000');
 
 db.exec(`
 CREATE TABLE IF NOT EXISTS users (
@@ -377,5 +395,70 @@ CREATE TABLE IF NOT EXISTS moderation_usage (
   count INTEGER NOT NULL DEFAULT 0
 )
 `);
+
+// ---------- Location Foundation V1 ----------
+// LOCATION FOUNDATION — see server.js's geocoding.js module for the actual geocoding logic.
+// All columns below are purely additive/nullable: existing free-text location/pickup_area/
+// pickup_address fields are untouched and remain the source of truth for display. Nothing here is
+// exposed via any API response yet (see stripInternalGeoFields() in server.js) — these columns are
+// populated best-effort in the background and are not read by any route's response building today.
+//
+// users.location_lat/location_lng: a single best-effort geocoded point for the free-text `location`
+// field (already city/area-level, not a home address, so no separate public/private split is
+// needed here — the text itself is already coarse).
+//
+// items.pickup_lat/pickup_lng and request_offers.pickup_lat/pickup_lng: the PRIVATE/canonical
+// geocoded point, derived from pickup_address when present (falls back to pickup_area otherwise).
+// Must never be returned by any API response except to an authorized owner/accepted-party route
+// once a future phase actually needs it — today it is stripped from every response, no exceptions.
+//
+// items.pickup_public_lat/pickup_public_lng and the same on request_offers: a deliberately
+// rounded/fuzzed point (see fuzzCoordinate() in geocoding.js) intended to eventually back
+// radius/distance search without ever revealing the real pickup point. Also not yet exposed via
+// any API response in this phase — computed and stored only, for a future search feature to use.
+//
+// *_geo_precision: 'exact' (geocoded from a specific address) | 'approximate' (geocoded from a
+// coarse area description only) | NULL (never geocoded). *_geocode_status: 'ok' | 'not_found' |
+// 'failed' | 'timeout' | 'rate_limited' | 'not_configured' | 'skipped' (empty input) | NULL (never
+// attempted) — lets an admin/backfill script tell "never tried" apart from "tried and failed".
+const userColumns3 = db.prepare("PRAGMA table_info(users)").all().map(c => c.name);
+const userMigrations3 = {
+  location_lat: "ALTER TABLE users ADD COLUMN location_lat REAL DEFAULT NULL",
+  location_lng: "ALTER TABLE users ADD COLUMN location_lng REAL DEFAULT NULL",
+  location_precision: "ALTER TABLE users ADD COLUMN location_precision TEXT DEFAULT NULL",
+  location_geocoded_at: "ALTER TABLE users ADD COLUMN location_geocoded_at TEXT DEFAULT NULL",
+  location_geocode_status: "ALTER TABLE users ADD COLUMN location_geocode_status TEXT DEFAULT NULL"
+};
+for (const [col, sql] of Object.entries(userMigrations3)) {
+  if (!userColumns3.includes(col)) db.exec(sql);
+}
+
+const itemColumns4 = db.prepare("PRAGMA table_info(items)").all().map(c => c.name);
+const itemMigrations4 = {
+  pickup_lat: "ALTER TABLE items ADD COLUMN pickup_lat REAL DEFAULT NULL",
+  pickup_lng: "ALTER TABLE items ADD COLUMN pickup_lng REAL DEFAULT NULL",
+  pickup_public_lat: "ALTER TABLE items ADD COLUMN pickup_public_lat REAL DEFAULT NULL",
+  pickup_public_lng: "ALTER TABLE items ADD COLUMN pickup_public_lng REAL DEFAULT NULL",
+  pickup_geo_precision: "ALTER TABLE items ADD COLUMN pickup_geo_precision TEXT DEFAULT NULL",
+  pickup_geocoded_at: "ALTER TABLE items ADD COLUMN pickup_geocoded_at TEXT DEFAULT NULL",
+  pickup_geocode_status: "ALTER TABLE items ADD COLUMN pickup_geocode_status TEXT DEFAULT NULL"
+};
+for (const [col, sql] of Object.entries(itemMigrations4)) {
+  if (!itemColumns4.includes(col)) db.exec(sql);
+}
+
+const offerColumns2 = db.prepare("PRAGMA table_info(request_offers)").all().map(c => c.name);
+const offerMigrations2 = {
+  pickup_lat: "ALTER TABLE request_offers ADD COLUMN pickup_lat REAL DEFAULT NULL",
+  pickup_lng: "ALTER TABLE request_offers ADD COLUMN pickup_lng REAL DEFAULT NULL",
+  pickup_public_lat: "ALTER TABLE request_offers ADD COLUMN pickup_public_lat REAL DEFAULT NULL",
+  pickup_public_lng: "ALTER TABLE request_offers ADD COLUMN pickup_public_lng REAL DEFAULT NULL",
+  pickup_geo_precision: "ALTER TABLE request_offers ADD COLUMN pickup_geo_precision TEXT DEFAULT NULL",
+  pickup_geocoded_at: "ALTER TABLE request_offers ADD COLUMN pickup_geocoded_at TEXT DEFAULT NULL",
+  pickup_geocode_status: "ALTER TABLE request_offers ADD COLUMN pickup_geocode_status TEXT DEFAULT NULL"
+};
+for (const [col, sql] of Object.entries(offerMigrations2)) {
+  if (!offerColumns2.includes(col)) db.exec(sql);
+}
 
 module.exports = db;

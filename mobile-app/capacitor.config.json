@@ -1,0 +1,26 @@
+{
+  "appId": "com.reusehub.app",
+  "appName": "ReUse Hub",
+  "webDir": "www",
+  "server": {
+    "url": "https://REPLACE_WITH_YOUR_PRODUCTION_DOMAIN",
+    "cleartext": false,
+    "allowNavigation": [
+      "REPLACE_WITH_YOUR_PRODUCTION_DOMAIN"
+    ]
+  },
+  "android": {
+    "allowMixedContent": false
+  },
+  "plugins": {
+    "SplashScreen": {
+      "launchShowDuration": 800,
+      "backgroundColor": "#ffffff",
+      "androidSplashResourceName": "splash",
+      "showSpinner": false
+    },
+    "StatusBar": {
+      "style": "DEFAULT"
+    }
+  }
+}

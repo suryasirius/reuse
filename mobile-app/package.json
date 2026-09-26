@@ -1,0 +1,24 @@
+{
+  "name": "reuse-hub-mobile",
+  "version": "1.0.0",
+  "description": "Native mobile wrapper (Android/iOS) for the ReUse Hub web app, built with Capacitor. Loads the live ReUse Hub site inside a native shell so the web app, API, and auth cookies are reused as-is with zero duplicated code.",
+  "private": true,
+  "scripts": {
+    "sync": "npx cap sync",
+    "add:android": "npx cap add android",
+    "add:ios": "npx cap add ios",
+    "open:android": "npx cap open android",
+    "open:ios": "npx cap open ios",
+    "copy": "npx cap copy"
+  },
+  "dependencies": {
+    "@capacitor/core": "^6.1.2",
+    "@capacitor/android": "^6.1.2",
+    "@capacitor/ios": "^6.1.2",
+    "@capacitor/splash-screen": "^6.0.2",
+    "@capacitor/status-bar": "^6.0.1"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^6.1.2"
+  }
+}

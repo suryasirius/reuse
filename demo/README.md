@@ -1,6 +1,6 @@
 # Demo environment
 
-A fully populated, disposable copy of ReUse Hub for exploring the site without touching real data.
+A fully populated, disposable copy of Zineedo for exploring the site without touching real data.
 
 ## How it stays separate from production
 
@@ -30,15 +30,15 @@ Password for every account: `Demo@1234`
 
 | Email | Who they are |
 |---|---|
-| admin@demo.reusehub.local | Admin — full moderation dashboard |
-| rahul@demo.reusehub.local | Regular user, a few completed exchanges |
-| priya@demo.reusehub.local | Regular user, posted a request that got fulfilled |
-| arjun@demo.reusehub.local | Active trader, several completed exchanges both ways |
-| sneha@demo.reusehub.local | Food Rescue poster |
-| amit@demo.reusehub.local | Business account, Business Surplus listings |
-| kavya@demo.reusehub.local | Highly rated (multiple 5-star reviews) |
-| vijay@demo.reusehub.local | Has an open report against him, plus a disputed rating |
-| rohit@demo.reusehub.local | Banned — try logging in to see the suspension message |
+| admin@demo.zineedo.local | Admin — full moderation dashboard |
+| rahul@demo.zineedo.local | Regular user, a few completed exchanges |
+| priya@demo.zineedo.local | Regular user, posted a request that got fulfilled |
+| arjun@demo.zineedo.local | Active trader, several completed exchanges both ways |
+| sneha@demo.zineedo.local | Food Rescue poster |
+| amit@demo.zineedo.local | Business account, Business Surplus listings |
+| kavya@demo.zineedo.local | Highly rated (multiple 5-star reviews) |
+| vijay@demo.zineedo.local | Has an open report against him, plus a disputed rating |
+| rohit@demo.zineedo.local | Banned — try logging in to see the suspension message |
 
 ## What's populated
 

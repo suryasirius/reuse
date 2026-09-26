@@ -1,4 +1,4 @@
-# ReUse Hub (prototype)
+# Zineedo (prototype)
 
 A website where users create an account and post things they don't want — old phones, computers, cars, furniture, or surplus food from a restaurant/business. Each post is categorized, and the owner sets how it's given away: **free**, **paid**, or **exchange**. Businesses can mark a post as **recurring** (daily/weekly/monthly) for things like daily leftover food. Other users browse, filter by category or offer type, and request an item; the owner accepts or declines the request.
 

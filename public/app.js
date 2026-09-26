@@ -7,6 +7,10 @@ const state = {
   businessCategoriesPrimaryCount: 0, showAllBusinessCategories: false,
   section: 'consumer', requestType: 'thing', urgentOnly: false, sort: '',
   items: [], requests: [], category: '', priceType: '', q: '', location: '',
+  // PHASE 7: pagination UI state for the "Load more" button — itemsPage/requestsPage track the next
+  // page to request, itemsHasMore/requestsHasMore mirror the backend's hasMore flag from Phase 6's
+  // opt-in pagination response shape ({ items/requests, page, limit, total, hasMore }).
+  itemsPage: 1, requestsPage: 1, itemsHasMore: false, requestsHasMore: false,
   wishlist: new Set(), monthlyBadges: null,
   // Cached once after login from the existing GET /api/users/:id/profile endpoint, purely to show
   // "Member since ..." in the profile dropdown header. Not a new data source or duplicated field.
@@ -27,7 +31,20 @@ const $ = sel => document.querySelector(sel);
 const modalRoot = $('#modalRoot');
 const lightboxRoot = $('#lightboxRoot');
 
-function closeModal() { modalRoot.innerHTML = ''; }
+// PHASE 7 MOBILE AUDIT FIX: showModal()/closeModal() back every major modal in the app (auth,
+// post item/request, edit item/request, claims/offers, ratings, the profile sheet, admin panels,
+// the location picker, etc.) but had NO Escape-to-close handling at all (unlike the notification
+// panel, category dropdown, user menu, and filter panel, which already all handle Escape) and never
+// locked background scroll while open. Both are fixed once, centrally, here — every caller gets the
+// fix automatically, nothing about individual modal call sites changes. Guards against the several
+// existing "closeModal(); openXyz();" call sequences in this file re-showing a modal immediately
+// (removeEventListener before re-adding avoids a duplicate listener; the scroll lock is idempotent).
+function modalEscapeHandler(e) { if (e.key === 'Escape') closeModal(); }
+function closeModal() {
+  modalRoot.innerHTML = '';
+  document.removeEventListener('keydown', modalEscapeHandler);
+  document.body.style.overflow = '';
+}
 
 // ---------- image lightbox (click a gallery photo -> full view, zoom toggle, next/prev,
 // thumbnail strip) — layers above the regular modal, only ever shows real uploaded photos
@@ -76,9 +93,15 @@ function openLightbox(images, startIndex) {
 
 function showModal(html) {
   modalRoot.innerHTML = `<div class="modal-overlay" id="overlay"><div class="modal">
-    <button class="close" id="closeModal">&times;</button>${html}</div></div>`;
+    <button class="close" id="closeModal" aria-label="Close">&times;</button>${html}</div></div>`;
   $('#closeModal').onclick = closeModal;
   $('#overlay').onclick = (e) => { if (e.target.id === 'overlay') closeModal(); };
+  // Idempotent: re-showing a new modal over an old one (a few call sites do this) just re-adds the
+  // same listener/lock rather than stacking duplicates, since closeModal() always tears both down
+  // first and the listener function reference is stable (module-level, not recreated per call).
+  document.removeEventListener('keydown', modalEscapeHandler);
+  document.addEventListener('keydown', modalEscapeHandler);
+  document.body.style.overflow = 'hidden';
 }
 
 async function api(url, opts = {}) {
@@ -642,7 +665,7 @@ function bindTopBar() {
   }, 350);
   $('#priceFilter').onchange = e => { state.priceType = e.target.value; loadItems(); };
   // Filters V1: a small revealed row (urgent-only + sort) rather than a full filter drawer —
-  // works identically for items (ReUse/Food Rescue/Business Surplus) and Requests.
+  // works identically for items (Zineedo/Food Rescue/Business Surplus) and Requests.
   $('#filtersBtn').onclick = () => {
     const panel = $('#filtersPanel');
     panel.style.display = panel.style.display === 'none' ? 'flex' : 'none';
@@ -856,7 +879,7 @@ const MORE_MENU_GROUPS = [
     { key: 'business', icon: 'building-2', label: 'Business Surplus', badge: true }
   ]},
   { label: 'About', items: [
-    { key: 'about', icon: 'info', label: 'About ReUse Hub' }
+    { key: 'about', icon: 'info', label: 'About Zineedo' }
   ]}
 ];
 function moreMenuItemsHtml() {
@@ -867,7 +890,7 @@ function moreMenuItemsHtml() {
     </div>
   `).join('');
   // Highlighted footer CTA — same destination as the "impact" item above (openImpactModal), just
-  // given its own visual weight since Impact is one of ReUse Hub's differentiators.
+  // given its own visual weight since Impact is one of Zineedo's differentiators.
   const impactCta = `
     <button type="button" class="more-menu-impact-cta" data-more="impact">
       <span class="more-menu-impact-icon"><i data-lucide="leaf"></i></span>
@@ -1088,7 +1111,7 @@ function displayCategory(cat) { return LEGACY_CATEGORY_LABELS[cat] || cat; }
 // every other item (no separate button chrome) and just scrolls to the existing full category
 // sidebar — same underlying state.category / renderCategories() / loadItems() logic as before.
 const QUICK_CAT_VISIBLE = 6;
-// Food (Surplus) and Construction Materials are core ReUse Hub categories — guaranteed a slot in the
+// Food (Surplus) and Construction Materials are core Zineedo categories — guaranteed a slot in the
 // shortcut row (not just whichever happens to land in the first N) even if CATEGORIES is ever
 // reordered. Same underlying state.category / filtering logic either way, just which chips render.
 const PRIORITY_CATEGORIES = ['Food (Surplus)', 'Construction Materials'];
@@ -1385,7 +1408,17 @@ async function openContributorsModal() {
   } catch (e) { $('#contributorsList').innerHTML = `<div class="empty">Couldn't load contributors right now.</div>`; }
 }
 
-async function loadItems() {
+// PHASE 7: minimum coherent pagination UI over the Phase 6 opt-in backend pagination. Sending
+// page/limit turns the response into { items, page, limit, total, hasMore } (see server.js) instead
+// of the old bare array — both loadItems() and loadRequests() now always send them, so the grid
+// always has an accurate hasMore/total, and a "Load more" button (not infinite scroll, per the
+// Phase 7 rules) appends subsequent pages. A fresh call (append=false, the default — every existing
+// filter-change call site is unchanged and automatically gets this) resets to page 1 and replaces
+// the grid; append=true (only from the new "Load more" button) fetches the next page and concatenates.
+const GRID_PAGE_SIZE = 20;
+
+async function loadItems(append = false) {
+  if (!append) state.itemsPage = 1;
   const params = new URLSearchParams();
   params.set('listing_type', state.section);
   if (state.category) params.set('category', state.category);
@@ -1394,12 +1427,18 @@ async function loadItems() {
   if (state.location) params.set('location', state.location);
   if (state.urgentOnly) params.set('urgent', '1');
   if (state.sort) params.set('sort', state.sort);
-  const items = await api('/api/items?' + params.toString());
-  state.items = items;
+  params.set('page', state.itemsPage);
+  params.set('limit', GRID_PAGE_SIZE);
+  const data = await api('/api/items?' + params.toString());
+  state.items = append ? state.items.concat(data.items) : data.items;
+  state.itemsHasMore = !!data.hasMore;
   renderGrid();
 }
 
-async function loadRequests() {
+function loadMoreItems() { state.itemsPage = (state.itemsPage || 1) + 1; return loadItems(true); }
+
+async function loadRequests(append = false) {
+  if (!append) state.requestsPage = 1;
   const params = new URLSearchParams();
   params.set('request_type', state.requestType);
   if (state.category) params.set('category', state.category);
@@ -1407,10 +1446,15 @@ async function loadRequests() {
   if (state.urgentOnly) params.set('urgent', '1');
   if (state.location) params.set('location', state.location);
   if (state.sort) params.set('sort', state.sort);
-  const requests = await api('/api/requests?' + params.toString());
-  state.requests = requests;
+  params.set('page', state.requestsPage);
+  params.set('limit', GRID_PAGE_SIZE);
+  const data = await api('/api/requests?' + params.toString());
+  state.requests = append ? state.requests.concat(data.requests) : data.requests;
+  state.requestsHasMore = !!data.hasMore;
   renderGrid();
 }
+
+function loadMoreRequests() { state.requestsPage = (state.requestsPage || 1) + 1; return loadRequests(true); }
 
 const CONTENT_TITLES = {
   consumer: '🌱 Give items a new home',
@@ -1432,8 +1476,9 @@ function renderGrid() {
       const btn = $('#gridEmptyPostBtn'); if (btn) btn.onclick = () => $('#postBtn').click();
       return;
     }
-    el.innerHTML = title + `<div class="grid">${state.requests.map(requestCardHtml).join('')}</div>`;
+    el.innerHTML = title + `<div class="grid">${state.requests.map(requestCardHtml).join('')}</div>` + loadMoreHtml(state.requestsHasMore, 'requests');
     el.querySelectorAll('.card').forEach(c => c.onclick = () => openRequestDetail(c.dataset.id));
+    bindLoadMoreButton(el, 'requests');
     return;
   }
   if (!state.items.length) {
@@ -1446,9 +1491,34 @@ function renderGrid() {
     const btn = $('#gridEmptyPostBtn'); if (btn) btn.onclick = () => $('#postBtn').click();
     return;
   }
-  el.innerHTML = title + `<div class="grid">${state.items.map(cardHtml).join('')}</div>`;
+  el.innerHTML = title + `<div class="grid">${state.items.map(cardHtml).join('')}</div>` + loadMoreHtml(state.itemsHasMore, 'items');
   el.querySelectorAll('.card').forEach(c => c.onclick = () => openDetail(c.dataset.id));
   bindWishlistButtons(el);
+  bindLoadMoreButton(el, 'items');
+}
+
+// PHASE 7: minimum coherent pagination UI (Section 18) — a single "Load more" button, never
+// infinite scroll. Rendered only when the backend's hasMore flag says another page exists; hidden
+// entirely otherwise so pages with fewer than GRID_PAGE_SIZE results are unaffected. Kind ('items'
+// or 'requests') picks which loadMore*/state.*HasMore pair to wire up.
+function loadMoreHtml(hasMore, kind) {
+  if (!hasMore) return '';
+  return `<div class="load-more-wrap"><button class="secondary-btn" id="loadMore_${kind}">Load more</button></div>`;
+}
+
+function bindLoadMoreButton(el, kind) {
+  const btn = el.querySelector(`#loadMore_${kind}`);
+  if (!btn) return;
+  btn.onclick = async () => {
+    btn.disabled = true;
+    btn.textContent = 'Loading…';
+    try {
+      if (kind === 'items') await loadMoreItems(); else await loadMoreRequests();
+    } finally {
+      // renderGrid() re-renders the whole grid (including a fresh Load more button, or none if this
+      // was the last page), so there is nothing left to re-enable on this specific button instance.
+    }
+  };
 }
 
 function requestBadgeHtml(r) {
@@ -1533,7 +1603,18 @@ function badgeHtml(item) {
 
 function thumbInnerHtml(item) {
   const first = (item.media && item.media[0]) || (item.media_url ? { url: item.media_url, media_type: item.media_type } : null);
-  if (!first) return `<span class="thumb-emoji">📦</span>`;
+  if (!first) {
+    // AUDIT FIX: an item with a photo still awaiting moderation (item.pending_media_count > 0,
+    // no approved media yet) previously rendered identically to a listing with no photo at all —
+    // the owner only ever learned about the pending review from a one-time alert() at the moment
+    // they posted; revisiting My Posts/any card later gave no way to tell "still under review"
+    // apart from "upload silently failed". This is a distinct, clearly-labeled state instead —
+    // same box/sizing as the existing no-photo state, just a different icon + short label.
+    if (item.pending_media_count > 0) {
+      return `<span class="thumb-pending"><span class="thumb-emoji">🕒</span><span class="thumb-pending-label">Image under review</span></span>`;
+    }
+    return `<span class="thumb-emoji">📦</span>`;
+  }
   if (first.media_type === 'video') return `<video src="${first.url}" muted></video>`;
   // thumb_url is a smaller, consistently 4:3-cropped/compressed variant generated server-side at
   // publish time (see processApprovedImage() in server.js) — used as the card's primary image so a
@@ -1561,7 +1642,15 @@ function pickupFlagHtml(item) {
 
 function galleryHtml(item) {
   const media = (item.media && item.media.length) ? item.media : (item.media_url ? [{ url: item.media_url, media_type: item.media_type }] : []);
-  if (!media.length) return '';
+  if (!media.length) {
+    // AUDIT FIX: same gap as thumbInnerHtml() above — the detail view showed nothing at all for a
+    // listing whose photo is still pending review, indistinguishable from a listing that never had
+    // a photo. Small, existing-style-consistent note instead of silence.
+    if (item.pending_media_count > 0) {
+      return `<div class="gallery-pending">🕒 ${item.pending_media_count} photo${item.pending_media_count > 1 ? 's' : ''} under review — will appear here once approved</div>`;
+    }
+    return '';
+  }
   return `<div class="gallery">${media.map(m => m.media_type === 'video'
     ? `<video src="${m.url}" controls></video>`
     : `<img src="${m.url}">`).join('')}</div>`;
@@ -2173,7 +2262,7 @@ function openPostModal() {
         <label>Food type</label>
         <select name="food_pref">${FOOD_PREF_OPTIONS.map(o => `<option value="${o.value}">${o.label}</option>`).join('')}</select>
         <label><input type="checkbox" id="foodUrgent" style="width:auto;display:inline-block;margin-right:6px">🔥 Urgent — pickup needed soon</label>
-        <p class="hint food-safety-hint">Food safety: Please share accurate information about the food and its condition. ReUse Hub does not inspect or certify food safety. Recipients should use their own judgment before consuming.</p>
+        <p class="hint food-safety-hint">Food safety: Please share accurate information about the food and its condition. Zineedo does not inspect or certify food safety. Recipients should use their own judgment before consuming.</p>
       ` : '';
     }
   }
@@ -2770,7 +2859,7 @@ async function openVerifyModal() {
 
 // ---------- impact metrics ----------
 async function openImpactModal() {
-  showModal(`<h2>Our impact</h2><p class="hint">Live numbers from ReUse Hub — "Nothing useful should go to waste."</p><div id="impactContent">Loading...</div>`);
+  showModal(`<h2>Our impact</h2><p class="hint">Live numbers from Zineedo — "Nothing useful should go to waste."</p><div id="impactContent">Loading...</div>`);
   const stats = await api('/api/impact');
   $('#impactContent').innerHTML = `<div class="impact-grid">
     <div class="impact-stat"><div class="num">${stats.total_users}</div><div class="label">Registered users</div></div>
@@ -3238,10 +3327,42 @@ function isOverlayPageOpen(pageId) {
   return openOverlayPageId === pageId;
 }
 
+// AUDIT FIX: opening My Posts (or My Profile) never cleared whichever top .section-tab (Give &
+// Take / Business Surplus / Requests) was active beforehand — since .my-posts-page/.my-profile-page
+// render inline below the header rather than as a full-screen overlay, that stale-active tab stayed
+// visibly green/underlined at the same time as #myItemsBtn, making it look like two different pages
+// were "current" at once. Remembers which section-tab was active before the overlay opened and
+// restores it on close; nothing else about section-tab behavior changes.
+let sectionTabActiveBeforeOverlay = null;
+// PHASE 7 MOBILE AUDIT FIX: the desktop half of this same bug (My Posts leaving a stale
+// .section-tab looking active) was already fixed in an earlier phase, but the equivalent mobile
+// bottom-nav item was never touched by this function at all — opening My Posts/My Profile via the
+// Profile sheet's bottom-nav entry point left whichever of Home/Browse/Requests was tapped last
+// still visually highlighted, while the actual "Profile" bottom-nav item never lit up. This is the
+// specific issue Phase 7 was asked to recheck; it was still present. Mirrors the exact same
+// remember-and-restore pattern already used for sectionTabActiveBeforeOverlay above.
+let bottomNavActiveBeforeOverlay = null;
 function setOverlayActiveIndicator(pageId) {
   Object.values(OVERLAY_PAGE_ACTIVE_SELECTORS).forEach(sel => $(sel)?.classList.remove('active'));
   const sel = pageId && OVERLAY_PAGE_ACTIVE_SELECTORS[pageId];
   if (sel) $(sel)?.classList.add('active');
+
+  if (pageId) {
+    if (!sectionTabActiveBeforeOverlay) {
+      sectionTabActiveBeforeOverlay = document.querySelector('.section-tab.active') || null;
+    }
+    document.querySelectorAll('.section-tab').forEach(b => b.classList.remove('active'));
+    if (!bottomNavActiveBeforeOverlay) {
+      bottomNavActiveBeforeOverlay = document.querySelector('.bottom-nav-item.active') || null;
+    }
+    document.querySelectorAll('.bottom-nav-item').forEach(b => b.classList.toggle('active', b.dataset.bn === 'profile'));
+  } else {
+    if (sectionTabActiveBeforeOverlay) sectionTabActiveBeforeOverlay.classList.add('active');
+    sectionTabActiveBeforeOverlay = null;
+    document.querySelectorAll('.bottom-nav-item').forEach(b => b.classList.remove('active'));
+    if (bottomNavActiveBeforeOverlay) bottomNavActiveBeforeOverlay.classList.add('active');
+    bottomNavActiveBeforeOverlay = null;
+  }
 }
 
 function showHomepageOverlayPage(pageId) {
@@ -3363,14 +3484,25 @@ async function openMyProfile() {
 
 // Edit Profile form: name + location only (see PATCH /api/me on the server — email/account_type
 // aren't editable here, same scope decision already made for the rest of the account system).
+// PHASE 2 — LOCATION PICKER: the plain free-text location input is upgraded (not replaced with a
+// competing UI) to a read-only display + "Change location" button that opens the new picker modal.
+// Typing a location by hand is still fully supported — the picker's manual search IS a text
+// search, just one that resolves to a real geocoded place instead of an arbitrary unverified
+// string. pendingLocationSelection holds whatever the picker most recently confirmed (or null if
+// the user hasn't touched it this edit session, in which case the existing location is unchanged).
 function renderMyProfileEditForm(p) {
   const content = $('#myProfileContent');
+  let pendingLocationSelection = null; // { label, lat, lng, source } | null
+  const currentLocationLabel = () => pendingLocationSelection ? pendingLocationSelection.label : (p.location || 'Not set');
   content.innerHTML = `
     <form id="myProfileEditForm" novalidate>
       <label for="editProfileName">Full name</label>
       <input id="editProfileName" name="name" required minlength="1" maxlength="80" value="${escapeHtml(p.name)}">
-      <label for="editProfileLocation">Location (city/area)</label>
-      <input id="editProfileLocation" name="location" maxlength="120" placeholder="e.g. Chennai" value="${escapeHtml(p.location || '')}">
+      <label>Location</label>
+      <div class="location-field-display">
+        <span id="editProfileLocationLabel">📍 ${escapeHtml(currentLocationLabel())}</span>
+        <button type="button" class="ghost" id="editProfileChangeLocationBtn">Change location</button>
+      </div>
       <div class="error" id="editProfileError" role="alert" aria-live="polite"></div>
       <div style="display:flex;gap:10px;margin-top:12px">
         <button class="primary-btn" type="submit">Save changes</button>
@@ -3379,21 +3511,162 @@ function renderMyProfileEditForm(p) {
     </form>
   `;
   $('#editProfileCancelBtn').onclick = () => openMyProfile();
+  $('#editProfileChangeLocationBtn').onclick = () => {
+    openLocationPickerModal(p.location || '', (selection) => {
+      // selection: { label, lat, lng, source } — the modal already closed itself before calling
+      // this; nothing is saved to the server yet, only held here until "Save changes" is submitted,
+      // matching the rest of this form's existing save-on-submit behavior.
+      pendingLocationSelection = selection;
+      $('#editProfileLocationLabel').textContent = `📍 ${selection.label}`;
+    });
+  };
   $('#myProfileEditForm').onsubmit = async (e) => {
     e.preventDefault();
     const errEl = $('#editProfileError');
     errEl.textContent = '';
     const name = $('#editProfileName').value.trim();
-    const loc = $('#editProfileLocation').value.trim();
     if (!name) { errEl.textContent = 'Name is required.'; return; }
+    const body = { name };
+    if (pendingLocationSelection) {
+      body.location = pendingLocationSelection.label;
+      body.location_lat = pendingLocationSelection.lat;
+      body.location_lng = pendingLocationSelection.lng;
+      body.location_source = pendingLocationSelection.source;
+      if (pendingLocationSelection.precision) body.location_precision = pendingLocationSelection.precision;
+    }
     try {
-      const { user } = await api('/api/me', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, location: loc }) });
+      const { user } = await api('/api/me', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
       state.user = user;
       renderNav();
       await openMyProfile();
     } catch (err) {
       errEl.textContent = err.message || 'Could not save changes.';
     }
+  };
+}
+
+// ---------- Phase 2: Location Picker modal (reusable) ----------
+// onConfirm(selection) is called with { label, lat, lng, source, precision } only after the user
+// explicitly clicks "Confirm location" — nothing is sent anywhere by this modal itself; the caller
+// decides what to do with the confirmed selection (here, holding it until the surrounding form is
+// saved). Cancelling (closing the modal without confirming) leaves the caller's existing location
+// completely untouched, since onConfirm is simply never called.
+function openLocationPickerModal(currentLocationText, onConfirm) {
+  showModal(`
+    <h2>📍 Choose your location</h2>
+    <p class="hint">Used to show relevant nearby content. This is your general area — not an exact address.</p>
+    <button type="button" class="primary-btn" id="locPickerUseCurrentBtn" style="width:100%;margin:14px 0">Use my current location</button>
+    <div class="error" id="locPickerGeoError" role="alert" aria-live="polite"></div>
+    <label for="locPickerSearchInput">Search for a city, area or locality</label>
+    <input id="locPickerSearchInput" placeholder="e.g. Hyderabad, Kukatpally, Chennai" autocomplete="off">
+    <div id="locPickerResults" style="margin-top:8px"></div>
+    <div id="locPickerConfirm" style="margin-top:14px"></div>
+    <div class="hint" style="margin-top:10px;text-align:center">Powered by Geoapify &middot; &copy; OpenStreetMap contributors</div>
+  `);
+  const resultsEl = $('#locPickerResults');
+  const confirmEl = $('#locPickerConfirm');
+  const geoErrorEl = $('#locPickerGeoError');
+
+  function renderConfirmStep(selection) {
+    confirmEl.innerHTML = `
+      <div class="location-confirm-box">
+        <div class="hint">Selected location</div>
+        <div class="location-confirm-label">📍 ${escapeHtml(selection.label)}</div>
+        <button type="button" class="primary-btn" id="locPickerConfirmBtn" style="margin-top:10px">Confirm location</button>
+      </div>
+    `;
+    $('#locPickerConfirmBtn').onclick = () => {
+      closeModal();
+      onConfirm(selection);
+    };
+  }
+
+  function renderResults(results) {
+    if (!results.length) { resultsEl.innerHTML = ''; return; }
+    resultsEl.innerHTML = results.map((r, i) => `<button type="button" class="location-result-row" data-i="${i}">📍 ${escapeHtml(r.label)}</button>`).join('');
+    resultsEl.querySelectorAll('.location-result-row').forEach((btn, i) => {
+      btn.onclick = () => {
+        resultsEl.innerHTML = '';
+        $('#locPickerSearchInput').value = results[i].label;
+        renderConfirmStep({ label: results[i].label, lat: results[i].lat, lng: results[i].lng, source: 'search', precision: results[i].precision });
+      };
+    });
+  }
+
+  const runSearch = debounce(async (q) => {
+    confirmEl.innerHTML = '';
+    if (!q.trim()) { resultsEl.innerHTML = ''; return; }
+    resultsEl.innerHTML = `<div class="hint">Searching…</div>`;
+    try {
+      const res = await fetch('/api/location/search?q=' + encodeURIComponent(q), { credentials: 'include' });
+      const data = await res.json();
+      if (data.status === 'ok') {
+        renderResults(data.results);
+      } else if (data.status === 'not_found') {
+        resultsEl.innerHTML = `<div class="hint">No matches found. Try a different spelling or a nearby larger area.</div>`;
+      } else if (data.status === 'rate_limited') {
+        resultsEl.innerHTML = `<div class="hint">Too many searches right now — please wait a moment and try again.</div>`;
+      } else if (data.status === 'not_configured') {
+        resultsEl.innerHTML = `<div class="hint">Location search isn't available right now. You can still save a location by typing it as free text via "Use my current location" or contact support.</div>`;
+      } else {
+        resultsEl.innerHTML = `<div class="hint">Couldn't search right now. Please try again in a moment.</div>`;
+      }
+    } catch {
+      resultsEl.innerHTML = `<div class="hint">Couldn't reach the location service. Please check your connection and try again.</div>`;
+    }
+  }, 350);
+  $('#locPickerSearchInput').oninput = (e) => runSearch(e.target.value);
+
+  $('#locPickerUseCurrentBtn').onclick = () => {
+    geoErrorEl.textContent = '';
+    // A truthy check (not just `'geolocation' in navigator`) so this also catches a browser/test
+    // environment where the property exists but is null/undefined, not only one where it's absent
+    // entirely — both mean "can't use this", and only a truthy check safely handles both.
+    if (!navigator.geolocation) {
+      geoErrorEl.textContent = "Your browser doesn't support location detection. You can search for your city or area instead.";
+      return;
+    }
+    const btn = $('#locPickerUseCurrentBtn');
+    btn.disabled = true;
+    const originalText = btn.textContent;
+    btn.textContent = 'Detecting your location…';
+    navigator.geolocation.getCurrentPosition(
+      async (position) => {
+        btn.disabled = false; btn.textContent = originalText;
+        const { latitude, longitude } = position.coords;
+        // Client-side range check is just a fast, friendly first line of defense — the server
+        // re-validates independently and is the actual boundary (see POST /api/location/reverse).
+        if (typeof latitude !== 'number' || typeof longitude !== 'number' ||
+            latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180) {
+          geoErrorEl.textContent = "Couldn't determine your location. You can search for your city or area instead.";
+          return;
+        }
+        try {
+          const res = await fetch('/api/location/reverse', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ lat: latitude, lng: longitude }) });
+          const data = await res.json();
+          if (data.status === 'ok') {
+            renderConfirmStep({ label: data.label, lat: latitude, lng: longitude, source: 'gps', precision: 'approximate' });
+          } else if (data.status === 'rate_limited') {
+            geoErrorEl.textContent = 'Too many attempts right now — please wait a moment and try again.';
+          } else if (data.status === 'not_configured') {
+            geoErrorEl.textContent = "Location detection isn't available right now. You can search for your city or area instead.";
+          } else {
+            geoErrorEl.textContent = "Couldn't determine your location. You can search for your city or area instead.";
+          }
+        } catch {
+          geoErrorEl.textContent = "Couldn't reach the location service. You can search for your city or area instead.";
+        }
+      },
+      (error) => {
+        btn.disabled = false; btn.textContent = originalText;
+        // GeolocationPositionError codes: 1 = PERMISSION_DENIED, 2 = POSITION_UNAVAILABLE, 3 = TIMEOUT.
+        if (error.code === 1) geoErrorEl.textContent = "Location permission denied. You can search for your city or area instead.";
+        else if (error.code === 2) geoErrorEl.textContent = "Couldn't determine your location right now. You can search for your city or area instead.";
+        else if (error.code === 3) geoErrorEl.textContent = "Location request timed out. You can search for your city or area instead.";
+        else geoErrorEl.textContent = "Couldn't determine your location. You can search for your city or area instead.";
+      },
+      { timeout: 10000, maximumAge: 0 }
+    );
   };
 }
 
@@ -3436,7 +3709,7 @@ async function openSavedItemsModal() {
 // total_count instead of the sitewide total — clearly labeled as estimates, same as elsewhere.
 async function openMyImpactModal() {
   if (!state.user) { closeModal(); return openAuthModal('login'); }
-  showModal(`<h2>🌱 My Impact</h2><p class="hint">Your personal contribution to ReUse Hub.</p><div id="myImpactContent">Loading...</div>`);
+  showModal(`<h2>🌱 My Impact</h2><p class="hint">Your personal contribution to Zineedo.</p><div id="myImpactContent">Loading...</div>`);
   try {
     const p = await api('/api/users/' + state.user.id + '/profile');
     const reused = p.total_count || 0;
@@ -3448,7 +3721,7 @@ async function openMyImpactModal() {
         <div class="impact-stat"><div class="num">${Math.round(reused * 4.2)}</div><div class="label">Est. CO₂ saved (kg)</div></div>
         <div class="impact-stat"><div class="num">${Math.round(reused / 15) || (reused > 0 ? 1 : 0)}</div><div class="label">Est. trees saved</div></div>
       </div>
-      <p class="hint" style="margin-top:12px">CO₂ and tree figures are estimates using the same multipliers as ReUse Hub's community Impact Tracker, applied to your own contributions.</p>
+      <p class="hint" style="margin-top:12px">CO₂ and tree figures are estimates using the same multipliers as Zineedo's community Impact Tracker, applied to your own contributions.</p>
     `;
   } catch (e) {
     $('#myImpactContent').innerHTML = `<div class="empty">Could not load your impact.</div>`;

@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 360" role="img" aria-labelledby="title desc">
+<title id="title">Zineedo logo</title>
+<desc id="desc">Zineedo wordmark with the opposing-arrow Z and leaf mark.</desc>
+<defs>
+<linearGradient id="top" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#178A4B"/><stop offset="1" stop-color="#8EDB2E"/></linearGradient>
+<linearGradient id="bottom" x1="1" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#0B4D2C"/><stop offset="1" stop-color="#178A4B"/></linearGradient>
+<linearGradient id="leaf" x1="0" y1="1" x2="1" y2="0"><stop offset="0" stop-color="#178A4B"/><stop offset="1" stop-color="#8EDB2E"/></linearGradient>
+</defs>
+<rect width="1200" height="360" rx="28" fill="#0B4D2C"/><g transform="translate(30 35) scale(.52)">
+<path d="M72 116 H350 V76 L454 170 L350 264 V224 H190 C171 224 156 216 147 202 L92 202 C65 202 44 182 44 156 C44 134 56 116 72 116 Z" fill="url(#top)"/>
+<path d="M440 396 H162 V436 L58 342 L162 248 V288 H322 C341 288 356 296 365 310 L420 310 C447 310 468 330 468 356 C468 378 456 396 440 396 Z" fill="url(#bottom)"/>
+<path d="M258 321 C270 276 305 247 348 239 C344 282 319 319 278 333 C270 336 263 330 258 321 Z" fill="url(#leaf)"/>
+<path d="M272 321 C291 296 310 278 337 259" fill="none" stroke="#fff" stroke-width="8" stroke-linecap="round"/>
+</g>
+<text x="285" y="205" font-family="Arial, Helvetica, sans-serif" font-size="118" font-weight="700" letter-spacing="-5" fill="#FFFFFF">Zineed</text>
+<text x="1035" y="205" font-family="Arial, Helvetica, sans-serif" font-size="118" font-weight="700" fill="#178A4B">o</text>
+<text x="290" y="266" font-family="Arial, Helvetica, sans-serif" font-size="30" letter-spacing="8" fill="#E8F5EC">Give</text>
+<circle cx="392" cy="256" r="5" fill="#178A4B"/>
+<text x="425" y="266" font-family="Arial, Helvetica, sans-serif" font-size="30" letter-spacing="8" fill="#E8F5EC">Take</text>
+<circle cx="545" cy="256" r="5" fill="#178A4B"/>
+<text x="578" y="266" font-family="Arial, Helvetica, sans-serif" font-size="30" letter-spacing="8" fill="#E8F5EC">Reuse</text>
+</svg>
