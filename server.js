@@ -1,3 +1,8 @@
+// Must run before anything below reads process.env.* — without this, a production .env file
+// (TRUST_PROXY, EMAIL_USER/PASS, MODERATION_PROVIDER, SIGHTENGINE_*, etc.) is silently never
+// loaded, since Node itself has no built-in .env support. Safe to require even where no .env file
+// exists (e.g. a dev shell that already exports real env vars): it just finds nothing to load.
+require('dotenv').config();
 const express = require('express');
 const bcrypt = require('bcryptjs');
 const cookieParser = require('cookie-parser');
