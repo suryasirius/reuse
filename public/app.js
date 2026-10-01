@@ -1097,6 +1097,27 @@ const CATEGORY_ICONS = {
   'Other Industrial Byproduct': 'package'
 };
 
+// Per-category icon tint for the sidebar category list (renderCategories() below) — purely
+// decorative, same as the quick-cat-rail comment above, but here the user explicitly asked for a
+// distinct color per category instead of one uniform gray, so each gets a fixed muted (non-neon)
+// color. Falls back to the existing gray (var(--muted-2), applied in CSS) for anything not listed
+// here — never throws for an unmapped category.
+const CATEGORY_COLORS = {
+  'Education & School Supplies': '#8A63D2', 'Baby & Kids': '#D97A9C', 'Books & Media': '#4A5FC1',
+  'Construction Materials': '#B8860B', 'Electronics & Phones': '#3B82C4', 'Computers & Laptops': '#5B6B8C',
+  'Furniture': '#B07A4A', 'Vehicles': '#475569', 'Clothing & Accessories': '#2E9E8C',
+  'Kitchen & Appliances': '#C2572B', 'Food (Surplus)': '#D9534F', 'Tools & Equipment': '#6B7280',
+  'Event Items & Decorations': '#C2458A',
+  'Office Furniture & Fixtures': '#B07A4A', 'Business Equipment & Machinery': '#5B6B8C',
+  'Electronics & IT Equipment': '#3B82C4', 'Packaging Material': '#8B8F85', 'Retail / Event Surplus': '#C2458A',
+  'Toys & Kids': '#D97A9C', 'Baby Products': '#D97A9C',
+  'Electrician': '#B8860B', 'Plumber': '#3B82C4', 'Tutor': '#8A63D2', 'Delivery': '#D97A3B',
+  'Cleaning': '#2E9E8C', 'Repairs': '#6B7280', 'Design': '#C2458A', 'Photography': '#475569', 'Pet Care': '#B07A4A',
+  'Metal Scrap (CNC/Machining)': '#6B7280', 'Wood Scrap & Sawdust': '#B07A4A', 'Cow Dung & Manure': '#7A8F4A',
+  'Used Cooking Oil': '#C2572B', 'Food & Organic Waste': '#D9534F', 'Fabric & Textile Scrap': '#2E9E8C',
+  'Paper & Cardboard Waste': '#8A63D2', 'Plastic Scrap': '#3B82C4', 'Construction Debris': '#B8860B',
+};
+
 // Category-merge compatibility (mirrors server.js LEGACY_CATEGORY_MERGE): items/requests posted
 // before the category cleanup may still carry the old 'Baby Products'/'Toys & Kids' values in the
 // database (never rewritten). Wherever a stored category is shown as text to the user, or matched
@@ -1174,7 +1195,13 @@ function renderCategories() {
   const wrap = $('#categories');
   const { visible, hiddenCount } = visibleCategoriesFor(activeCategoryList());
   wrap.innerHTML = `<span class="chip ${state.category === '' ? 'active' : ''}" data-c=""><span class="cat-icon"><i data-lucide="layout-grid"></i></span>All</span>` +
-    visible.map(c => `<span class="chip ${state.category === c ? 'active' : ''}${PRIORITY_CATEGORIES.includes(c) ? ' chip-priority' : ''}" data-c="${escapeHtml(c)}"><span class="cat-icon"><i data-lucide="${CATEGORY_ICONS[c] || 'package'}"></i></span>${escapeHtml(c)}</span>`).join('') +
+    visible.map(c => {
+      const isActive = state.category === c;
+      // Active keeps the existing green highlight (handled by the .active CSS rule) rather than
+      // the category's own color — an inline style would otherwise win over that class rule.
+      const colorStyle = !isActive && CATEGORY_COLORS[c] ? ` style="color:${CATEGORY_COLORS[c]}"` : '';
+      return `<span class="chip ${isActive ? 'active' : ''}${PRIORITY_CATEGORIES.includes(c) ? ' chip-priority' : ''}" data-c="${escapeHtml(c)}"><span class="cat-icon"${colorStyle}><i data-lucide="${CATEGORY_ICONS[c] || 'package'}"></i></span>${escapeHtml(c)}</span>`;
+    }).join('') +
     (hiddenCount > 0 ? `<span class="chip chip-more" id="moreCategoriesBtn"><span class="cat-icon"><i data-lucide="more-horizontal"></i></span>More categories</span>` : '');
   wrap.querySelectorAll('.chip[data-c]').forEach(el => el.onclick = () => {
     state.category = el.dataset.c;
