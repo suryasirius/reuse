@@ -60,6 +60,22 @@ if (EMAIL_ENABLED) {
   console.warn('[email] EMAIL_USER/EMAIL_PASS not configured (or nodemailer not installed) — password reset emails will NOT be sent.');
 }
 
+// Fire-and-forget by design: used by /api/verify/request below. Unlike sendPasswordResetEmail,
+// there's no "don't leak account existence" constraint here — the caller is already logged in as
+// the account being verified (requireAuth), so there's nothing to hide by awaiting or not.
+function sendVerificationCodeEmail(toEmail, code) {
+  if (!mailTransporter) return;
+  mailTransporter.sendMail({
+    from: `"Zineedo" <${EMAIL_USER}>`,
+    to: toEmail,
+    subject: 'Your Zineedo verification code',
+    text: `Your Zineedo verification code is: ${code}\n\nEnter this in the app to verify your account. If you didn't request this, you can ignore this email.`,
+    html: `<p>Your Zineedo verification code is:</p><p style="font-size:24px;font-weight:bold;letter-spacing:4px">${code}</p><p>Enter this in the app to verify your account. If you didn't request this, you can ignore this email.</p>`,
+  }).catch((err) => {
+    console.error('[email] failed to send verification code email:', err.message);
+  });
+}
+
 // Fire-and-forget by design: callers don't await this on the request path, so a slow or failing
 // SMTP send never delays or breaks the /api/forgot-password response (which must look identical
 // whether or not the account/email exists, per GENERIC_RESET_MESSAGE below).
@@ -1053,13 +1069,17 @@ app.post('/api/change-password', requireAuth, changePasswordLimiter, (req, res) 
   res.json({ ok: true });
 });
 
-// ---------- trust: verification (demo OTP — no real SMS/email provider wired up yet) ----------
+// ---------- trust: verification (email OTP via Gmail SMTP; see EMAIL_ENABLED above) ----------
 app.post('/api/verify/request', requireAuth, verifyLimiter, (req, res) => {
   const code = String(Math.floor(100000 + Math.random() * 900000));
   db.prepare('UPDATE users SET verify_code = ? WHERE id = ?').run(code, req.user.id);
-  // DEMO MODE: normally this code would go out via SMS/email. We return it directly
-  // so the flow is testable without a provider hooked up.
-  res.json({ ok: true, demo_code: code });
+  if (!IS_PROD) {
+    // DEMO/DEV MODE: same pattern as /api/forgot-password above — return the code directly so the
+    // flow is testable without needing a real inbox.
+    return res.json({ ok: true, demo_code: code });
+  }
+  sendVerificationCodeEmail(req.user.email, code);
+  res.json({ ok: true });
 });
 
 app.post('/api/verify/confirm', requireAuth, verifyLimiter, (req, res) => {

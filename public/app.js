@@ -2863,8 +2863,13 @@ async function openAdminDashboard(tab = 'reports', statusFilter = 'open') {
 async function openVerifyModal() {
   showModal(`<h2>Verify your account</h2><div id="verifyContent">Loading...</div>`);
   const { demo_code } = await api('/api/verify/request', { method: 'POST' });
+  // demo_code is only present outside production (see /api/verify/request in server.js) — in
+  // production the code is emailed to the user's own address instead of being returned here.
+  const hint = demo_code
+    ? `DEMO MODE: in production this code would be emailed to you. Your code is <strong>${demo_code}</strong> — enter it below to confirm.`
+    : `We emailed a 6-digit code to ${escapeHtml(state.user.email)} — enter it below to confirm.`;
   $('#verifyContent').innerHTML = `
-    <p class="hint">DEMO MODE: in production this code would be sent via SMS/email. Your code is <strong>${demo_code}</strong> — enter it below to confirm.</p>
+    <p class="hint">${hint}</p>
     <form id="verifyForm">
       <label>6-digit code</label><input name="code" required maxlength="6" pattern="[0-9]{6}">
       <div class="error" id="verifyError"></div>
