@@ -46,6 +46,30 @@ function closeModal() {
   document.body.style.overflow = '';
 }
 
+// ---------- toast notifications ----------
+// Lightweight on-screen confirmation (e.g. "Your item was posted!") — separate from the modal
+// system above, since a toast must stay visible briefly AFTER a modal closes, not live inside it.
+// Stacks multiple toasts if triggered in quick succession rather than replacing one another.
+let toastContainer = null;
+function showToast(message, type) {
+  if (!toastContainer) {
+    toastContainer = document.createElement('div');
+    toastContainer.className = 'toast-container';
+    document.body.appendChild(toastContainer);
+  }
+  const el = document.createElement('div');
+  el.className = `toast toast-${type || 'success'}`;
+  el.textContent = message;
+  toastContainer.appendChild(el);
+  // Force reflow so the enter transition actually plays instead of the element appearing
+  // already in its final state.
+  requestAnimationFrame(() => el.classList.add('toast-show'));
+  setTimeout(() => {
+    el.classList.remove('toast-show');
+    setTimeout(() => el.remove(), 250);
+  }, 3500);
+}
+
 // ---------- image lightbox (click a gallery photo -> full view, zoom toggle, next/prev,
 // thumbnail strip) — layers above the regular modal, only ever shows real uploaded photos
 // (never generated/replaced), and never touches the original files. ----------
@@ -2345,7 +2369,9 @@ function openPostModal() {
       // Image Moderation V1: a photo can land in review instead of publishing instantly — let the
       // poster know rather than leaving them wondering why a photo they uploaded isn't showing yet.
       if (posted && posted.pending_media_count > 0) {
-        alert(`Your listing is live! ${posted.pending_media_count} photo${posted.pending_media_count > 1 ? 's are' : ' is'} still being reviewed and will appear once approved (usually quick).`);
+        showToast(`Posted! ${posted.pending_media_count} photo${posted.pending_media_count > 1 ? 's are' : ' is'} still being reviewed and will appear once approved.`, 'info');
+      } else {
+        showToast('Your item was posted successfully!', 'success');
       }
     } catch (err) {
       $('#postError').textContent = err.message;
@@ -2581,6 +2607,7 @@ function openPostRequestModal() {
       await api('/api/requests', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(fd) });
       closeModal();
       loadRequests();
+      showToast('Your request was posted successfully!', 'success');
     } catch (err) {
       $('#postRequestError').textContent = err.message;
       submitBtn.disabled = false;

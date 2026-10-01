@@ -2060,3 +2060,11 @@ html,body{overflow-x:hidden;max-width:100%}
   .my-posts-post-btn{justify-content:center}
   .my-posts-toolbar select{flex:1;min-width:0}
 }
+
+/* Toast notifications (see showToast() in app.js) — stacked bottom-center, above everything
+   including the modal overlay, since a toast must stay visible after its triggering modal closes. */
+.toast-container{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);z-index:9999;display:flex;flex-direction:column;gap:8px;align-items:center;pointer-events:none}
+.toast{background:var(--text);color:#fff;padding:12px 20px;border-radius:var(--radius-full);font-size:14px;font-weight:600;box-shadow:0 8px 24px rgba(0,0,0,.18);opacity:0;transform:translateY(12px);transition:opacity .2s var(--ease),transform .2s var(--ease);max-width:90vw;text-align:center}
+.toast-show{opacity:1;transform:translateY(0)}
+.toast-success{background:var(--brand-dark)}
+.toast-info{background:var(--accent-dark)}
