@@ -13,6 +13,11 @@ const fs = require('fs');
 // reason, publishing falls back to the old plain-rename behavior rather than breaking uploads.
 let sharp = null;
 try { sharp = require('sharp'); } catch { /* falls back to unprocessed publish below */ }
+// Transactional email (password reset): optional at runtime the same way sharp is above — if
+// nodemailer isn't installed or EMAIL_USER/EMAIL_PASS aren't configured, sendPasswordResetEmail()
+// below just no-ops and callers fall back to their existing non-prod dev behavior.
+let nodemailer = null;
+try { nodemailer = require('nodemailer'); } catch { /* email sending disabled until installed */ }
 const crypto = require('crypto');
 const rateLimit = require('express-rate-limit');
 const helmet = require('helmet');
@@ -31,6 +36,48 @@ if (process.env.TRUST_PROXY === '1') app.set('trust proxy', 1);
 
 const SESSION_MAX_AGE_MS = 30 * 24 * 3600 * 1000; // 30 days, matches previous cookie behavior
 const RESET_TOKEN_TTL_MS = 30 * 60 * 1000; // 30 minutes
+
+// ---------- transactional email ----------
+// Gmail SMTP via an App Password (EMAIL_USER / EMAIL_PASS env vars). Kept deliberately simple —
+// this app sends low-volume transactional mail (password resets) rather than bulk/marketing mail,
+// so Gmail's send limits are not a concern. SITE_URL controls the host used in reset links sent to
+// users; defaults to the production domain since that's the only place real email actually sends.
+const EMAIL_USER = process.env.EMAIL_USER || '';
+const EMAIL_PASS = process.env.EMAIL_PASS || '';
+const SITE_URL = process.env.SITE_URL || 'https://zineedo.in';
+const EMAIL_ENABLED = !!(nodemailer && EMAIL_USER && EMAIL_PASS);
+
+let mailTransporter = null;
+if (EMAIL_ENABLED) {
+  mailTransporter = nodemailer.createTransport({
+    service: 'gmail',
+    auth: { user: EMAIL_USER, pass: EMAIL_PASS },
+  });
+} else if (IS_PROD) {
+  // Not fatal — the server still runs and /api/forgot-password still responds with the generic
+  // message — but this is loud on purpose: silently-broken password resets in production are easy
+  // to miss until a real user reports they never got an email.
+  console.warn('[email] EMAIL_USER/EMAIL_PASS not configured (or nodemailer not installed) — password reset emails will NOT be sent.');
+}
+
+// Fire-and-forget by design: callers don't await this on the request path, so a slow or failing
+// SMTP send never delays or breaks the /api/forgot-password response (which must look identical
+// whether or not the account/email exists, per GENERIC_RESET_MESSAGE below).
+function sendPasswordResetEmail(toEmail, rawToken) {
+  if (!mailTransporter) return;
+  // Matches the frontend's checkResetTokenInUrl() in public/app.js, which looks for ?reset=TOKEN
+  // on the root page (not a separate reset-password.html — no such file exists in public/).
+  const resetLink = `${SITE_URL}/?reset=${encodeURIComponent(rawToken)}`;
+  mailTransporter.sendMail({
+    from: `"Zineedo" <${EMAIL_USER}>`,
+    to: toEmail,
+    subject: 'Reset your Zineedo password',
+    text: `We received a request to reset your Zineedo password. This link expires in 30 minutes:\n\n${resetLink}\n\nIf you didn't request this, you can safely ignore this email.`,
+    html: `<p>We received a request to reset your Zineedo password. This link expires in 30 minutes:</p><p><a href="${resetLink}">${resetLink}</a></p><p>If you didn't request this, you can safely ignore this email.</p>`,
+  }).catch((err) => {
+    console.error('[email] failed to send password reset email:', err.message);
+  });
+}
 
 function sessionCookieOptions() {
   return {
@@ -855,14 +902,15 @@ app.post('/api/forgot-password', passwordResetLimiter, (req, res) => {
       const rawToken = crypto.randomBytes(32).toString('hex');
       db.prepare('INSERT INTO password_reset_tokens (id, user_id, token_hash, expires_at) VALUES (?,?,?, datetime(\'now\', \'+30 minutes\'))')
         .run(nanoid(), user.id, hashToken(rawToken));
-      // DEMO/DEV MODE: no email provider is wired up yet, so outside production we return the raw
-      // token directly (and log it) so the reset flow is testable end-to-end. In production this
-      // must be replaced with actually emailing/texting a reset link containing the raw token —
-      // never log or return it once a real provider is connected.
+      // DEMO/DEV MODE: outside production we return the raw token directly (and log it) so the
+      // reset flow is testable end-to-end without needing a real inbox. In production the token is
+      // never logged or returned in the response — it only ever leaves the server inside the email
+      // sent via sendPasswordResetEmail() (Gmail SMTP; see EMAIL_ENABLED near the top of this file).
       if (!IS_PROD) {
         console.log(`[dev] password reset token for ${email}: ${rawToken}`);
         return res.json({ ok: true, message: GENERIC_RESET_MESSAGE, dev_reset_token: rawToken });
       }
+      sendPasswordResetEmail(email, rawToken);
     }
   }
   // Always the same response whether or not the account exists, and even for a blank/invalid
