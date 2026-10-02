@@ -2887,22 +2887,69 @@ async function openAdminDashboard(tab = 'reports', statusFilter = 'open') {
 }
 
 // ---------- trust: verification (demo OTP) ----------
+// RESEND COOLDOWN: 30s between sends, client-side only (purely UX — stops someone mashing the
+// button and racing the server's own 5-per-15-min verifyLimiter). Not persisted across a modal
+// close/reopen or a page reload by design: this is just "don't double-tap", not a security control —
+// the real limit that actually matters lives server-side on /api/verify/request.
+const VERIFY_RESEND_COOLDOWN_S = 30;
+
 async function openVerifyModal() {
   showModal(`<h2>Verify your account</h2><div id="verifyContent">Loading...</div>`);
-  const { demo_code } = await api('/api/verify/request', { method: 'POST' });
-  // demo_code is only present outside production (see /api/verify/request in server.js) — in
-  // production the code is emailed to the user's own address instead of being returned here.
-  const hint = demo_code
-    ? `DEMO MODE: in production this code would be emailed to you. Your code is <strong>${demo_code}</strong> — enter it below to confirm.`
-    : `We emailed a 6-digit code to ${escapeHtml(state.user.email)} — enter it below to confirm.`;
+  renderVerifyForm(null, true); // true = send the first code automatically on open, like before
+}
+
+function renderVerifyForm(infoMessage, autoSend) {
   $('#verifyContent').innerHTML = `
-    <p class="hint">${hint}</p>
+    <p class="hint" id="verifyHint">${infoMessage ? escapeHtml(infoMessage) : `Tap "Send code" to email a 6-digit code to ${escapeHtml(state.user.email)}.`}</p>
     <form id="verifyForm">
-      <label>6-digit code</label><input name="code" required maxlength="6" pattern="[0-9]{6}">
+      <label>6-digit code</label><input name="code" required maxlength="6" pattern="[0-9]{6}" id="verifyCodeInput" disabled>
       <div class="error" id="verifyError"></div>
-      <button class="primary-btn" type="submit">Confirm</button>
+      <div class="verify-actions" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+        <button type="button" class="primary-btn" id="verifySendBtn">Send code</button>
+        <button class="primary-btn" type="submit" id="verifyConfirmBtn" disabled>Confirm</button>
+      </div>
     </form>
   `;
+  let cooldownTimer = null;
+  function startCooldown() {
+    let remaining = VERIFY_RESEND_COOLDOWN_S;
+    const btn = $('#verifySendBtn');
+    btn.disabled = true;
+    btn.textContent = `Resend code (${remaining}s)`;
+    cooldownTimer = setInterval(() => {
+      remaining -= 1;
+      if (remaining <= 0) {
+        clearInterval(cooldownTimer);
+        btn.disabled = false;
+        btn.textContent = 'Resend code';
+      } else {
+        btn.textContent = `Resend code (${remaining}s)`;
+      }
+    }, 1000);
+  }
+  async function sendCode() {
+    $('#verifyError').textContent = '';
+    $('#verifySendBtn').disabled = true;
+    try {
+      const { demo_code } = await api('/api/verify/request', { method: 'POST' });
+      // demo_code is only present outside production (see /api/verify/request in server.js) — in
+      // production the code is emailed to the user's own address instead of being returned here.
+      $('#verifyHint').innerHTML = demo_code
+        ? `DEMO MODE: in production this code would be emailed to you. Your code is <strong>${demo_code}</strong> — enter it below to confirm.`
+        : `We emailed a 6-digit code to ${escapeHtml(state.user.email)} — enter it below to confirm.`;
+      $('#verifyCodeInput').disabled = false;
+      $('#verifyConfirmBtn').disabled = false;
+      $('#verifyCodeInput').focus();
+      startCooldown();
+    } catch (err) {
+      // A real server-side rate-limit hit (too many sends) surfaces here with its own message —
+      // leave the button enabled so the user can read the error and decide whether to wait/retry,
+      // rather than silently re-cooling-down over a request that never actually sent anything.
+      $('#verifyError').textContent = err.message;
+      $('#verifySendBtn').disabled = false;
+    }
+  }
+  $('#verifySendBtn').onclick = sendCode;
   $('#verifyForm').onsubmit = async (e) => {
     e.preventDefault();
     const fd = Object.fromEntries(new FormData(e.target));
@@ -2914,6 +2961,7 @@ async function openVerifyModal() {
       alert("You're verified! A ✓ Verified badge now shows on your posts.");
     } catch (err) { $('#verifyError').textContent = err.message; }
   };
+  if (autoSend) sendCode();
 }
 
 // ---------- impact metrics ----------
