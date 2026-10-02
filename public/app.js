@@ -174,6 +174,7 @@ async function init() {
   initHeroCarousel();
   loadMonthlyBadges();
   if (state.user) refreshNotifCount();
+  registerServiceWorkerForPush();
   // One-time fetch of member_since for the dropdown header — reuses the same profile endpoint
   // My Profile/My Impact call, just cached once so the header doesn't need its own request.
   if (state.user) {
@@ -792,14 +793,80 @@ function closePostSheet() {
   $('#postSheetOverlay').style.display = 'none';
 }
 
-function openProfileSheet() {
+// ---------- browser push notifications ----------
+// Standard VAPID-key conversion: the Push API's subscribe() call requires the server's public key
+// as a Uint8Array, but the server hands it over as the usual base64url string — this is the
+// well-known snippet for that conversion, no library needed for something this small.
+function urlBase64ToUint8Array(base64String) {
+  const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
+  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+  const rawData = atob(base64);
+  return Uint8Array.from([...rawData].map((c) => c.charCodeAt(0)));
+}
+
+// Registered for every visitor (not just logged-in users) so the service worker is already
+// installed and ready by the time someone logs in and taps "Enable notifications" — otherwise the
+// very first enable attempt would need an extra round trip just to install it first.
+async function registerServiceWorkerForPush() {
+  if (!('serviceWorker' in navigator) || !('PushManager' in window)) return;
+  try { await navigator.serviceWorker.register('/sw.js'); } catch { /* unsupported browser/context (e.g. non-HTTPS) — push just stays unavailable */ }
+}
+
+// Null = push unsupported/not configured, true = this browser has an active subscription on
+// Zineedo right now, false = supported but not subscribed. Used to decide the profile menu label.
+async function getPushSubscriptionState() {
+  if (!('serviceWorker' in navigator) || !('PushManager' in window)) return null;
+  try {
+    const reg = await navigator.serviceWorker.ready;
+    const sub = await reg.pushManager.getSubscription();
+    return !!sub;
+  } catch { return null; }
+}
+
+async function enablePushNotifications() {
+  const permission = await Notification.requestPermission();
+  if (permission !== 'granted') {
+    alert(permission === 'denied'
+      ? "Notifications are blocked for Zineedo in your browser settings. You'll need to allow them there first."
+      : 'Notification permission was not granted.');
+    return false;
+  }
+  try {
+    const { publicKey } = await api('/api/push/vapid-public-key');
+    const reg = await navigator.serviceWorker.ready;
+    let sub = await reg.pushManager.getSubscription();
+    if (!sub) {
+      sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlBase64ToUint8Array(publicKey) });
+    }
+    await api('/api/push/subscribe', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(sub.toJSON()) });
+    return true;
+  } catch (err) {
+    alert('Could not turn on notifications: ' + (err.message || 'unknown error'));
+    return false;
+  }
+}
+
+async function disablePushNotifications() {
+  try {
+    const reg = await navigator.serviceWorker.ready;
+    const sub = await reg.pushManager.getSubscription();
+    if (sub) {
+      await api('/api/push/unsubscribe', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ endpoint: sub.endpoint }) });
+      await sub.unsubscribe();
+    }
+  } catch { /* best-effort — nothing useful to show the user if this fails */ }
+}
+
+async function openProfileSheet() {
   if (!state.user) return openAuthModal('login');
   const notifLabel = ($('#notifDot') && $('#notifDot').style.display !== 'none') ? `Notifications (${$('#notifDot').textContent})` : 'Notifications';
+  const pushSupported = 'serviceWorker' in navigator && 'PushManager' in window;
   showModal(`
     <h2>Profile</h2>
     <p class="hint" style="margin-top:-4px">Hi, ${escapeHtml(state.user.name)} ${state.user.account_type === 'business' ? '🏢' : ''}</p>
     <div class="profile-sheet-list">
       <button type="button" class="profile-sheet-item" id="profileSheetNotif">🔔 ${notifLabel}</button>
+      ${pushSupported ? '<button type="button" class="profile-sheet-item" id="profileSheetPush">📲 Push notifications — checking…</button>' : ''}
       <button type="button" class="profile-sheet-item" id="profileSheetMyPosts">📦 My posts</button>
       <button type="button" class="profile-sheet-item" id="profileSheetActivity">📋 Activity</button>
       ${state.user.is_admin ? '<button type="button" class="profile-sheet-item" id="profileSheetAdmin">🛡️ Admin</button>' : ''}
@@ -811,6 +878,23 @@ function openProfileSheet() {
   $('#profileSheetActivity').onclick = () => { closeModal(); openActivity(); };
   if (state.user.is_admin) $('#profileSheetAdmin').onclick = () => { closeModal(); openAdminDashboard(); };
   $('#profileSheetLogout').onclick = async () => { closeModal(); await api('/api/logout', { method: 'POST' }); state.user = null; renderNav(); loadItems(); };
+  if (pushSupported) {
+    const pushBtn = $('#profileSheetPush');
+    const setPushLabel = (on) => { pushBtn.textContent = on ? '📲 Push notifications — on (tap to turn off)' : '📲 Turn on push notifications'; };
+    getPushSubscriptionState().then((on) => setPushLabel(!!on));
+    pushBtn.onclick = async () => {
+      pushBtn.disabled = true;
+      const currentlyOn = await getPushSubscriptionState();
+      if (currentlyOn) {
+        await disablePushNotifications();
+        setPushLabel(false);
+      } else {
+        const ok = await enablePushNotifications();
+        setPushLabel(ok);
+      }
+      pushBtn.disabled = false;
+    };
+  }
 }
 
 function bindBottomNav() {

@@ -396,6 +396,26 @@ CREATE TABLE IF NOT EXISTS moderation_usage (
 )
 `);
 
+// ---------- Web Push V1 ----------
+// One row per browser/device a user has turned notifications on in (endpoint is unique per
+// browser install, so the same user opening Zineedo on their phone AND laptop gets two rows and a
+// push to both). p256dh/auth are the browser-generated encryption keys the Push API requires to
+// encrypt a payload that only that specific browser install can decrypt — server.js never sees or
+// stores anything else about the device. A dead/unsubscribed endpoint is deleted reactively by
+// server.js the first time a push to it fails with 404/410, rather than needing a cleanup job.
+db.exec(`
+CREATE TABLE IF NOT EXISTS push_subscriptions (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  endpoint TEXT NOT NULL UNIQUE,
+  p256dh TEXT NOT NULL,
+  auth TEXT NOT NULL,
+  created_at TEXT DEFAULT (datetime('now')),
+  FOREIGN KEY(user_id) REFERENCES users(id)
+)
+`);
+db.exec("CREATE INDEX IF NOT EXISTS idx_push_subscriptions_user ON push_subscriptions(user_id)");
+
 // ---------- Location Foundation V1 ----------
 // LOCATION FOUNDATION — see server.js's geocoding.js module for the actual geocoding logic.
 // All columns below are purely additive/nullable: existing free-text location/pickup_area/

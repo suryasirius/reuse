@@ -18,6 +18,11 @@ const fs = require('fs');
 // reason, publishing falls back to the old plain-rename behavior rather than breaking uploads.
 let sharp = null;
 try { sharp = require('sharp'); } catch { /* falls back to unprocessed publish below */ }
+// Web Push: optional at runtime the same way sharp/sightengine are — if VAPID keys aren't set
+// (see VAPID_PUBLIC_KEY/VAPID_PRIVATE_KEY below), pushToUser() below just no-ops and the rest of
+// the app behaves exactly as it did before this feature existed.
+let webpush = null;
+try { webpush = require('web-push'); } catch { /* push disabled until installed */ }
 const crypto = require('crypto');
 const rateLimit = require('express-rate-limit');
 const helmet = require('helmet');
@@ -499,12 +504,50 @@ async function processApprovedImage(quarantinePath, mimetype) {
   }
 }
 
+// ---------- Web Push V1 ----------
+// VAPID identifies this server to push services (Chrome/Firefox's push endpoints) without any
+// third-party account — generate once with `npx web-push generate-vapid-keys` and set both env
+// vars. PUSH_ENABLED mirrors the EMAIL_ENABLED/MODERATION_PROVIDER pattern elsewhere in this file:
+// unset in dev, every push call below silently no-ops and the rest of the app is unaffected.
+const VAPID_PUBLIC_KEY = process.env.VAPID_PUBLIC_KEY || '';
+const VAPID_PRIVATE_KEY = process.env.VAPID_PRIVATE_KEY || '';
+const PUSH_ENABLED = !!(webpush && VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY);
+if (PUSH_ENABLED) {
+  webpush.setVapidDetails(`mailto:${process.env.ADMIN_EMAILS ? process.env.ADMIN_EMAILS.split(',')[0].trim() : 'admin@zineedo.in'}`, VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY);
+} else if (IS_PROD) {
+  console.warn('[push] VAPID_PUBLIC_KEY/VAPID_PRIVATE_KEY not configured — browser push notifications will NOT be sent.');
+}
+
+// Fire-and-forget by design, same as the email senders above — a slow or failing push must never
+// delay or break the request that triggered it (a claim, an accepted offer, etc.). Sends to every
+// browser/device this user has subscribed from; a subscription the push service reports as
+// gone (410) or not-found (404) is deleted here so it never costs a failed send again.
+function pushToUser(userId, title, body, url) {
+  if (!PUSH_ENABLED) return;
+  const subs = db.prepare('SELECT * FROM push_subscriptions WHERE user_id = ?').all(userId);
+  const payload = JSON.stringify({ title, body, url: url || '/' });
+  for (const sub of subs) {
+    const pushSub = { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } };
+    webpush.sendNotification(pushSub, payload).catch((err) => {
+      if (err.statusCode === 404 || err.statusCode === 410) {
+        db.prepare('DELETE FROM push_subscriptions WHERE id = ?').run(sub.id);
+      } else {
+        console.error('[push] send failed:', err.statusCode, err.message);
+      }
+    });
+  }
+}
+
 // targetType/targetId tell the frontend what a click on this notification should open
 // ('item' | 'request' | 'claim' | 'offer' | 'user'). Both optional — a notification without a
 // target just isn't clickable, which is fine and shouldn't block the notification from firing.
+// Every call also fires a browser push (see pushToUser above) with the same message, so a user who
+// isn't looking at the tab right now still finds out — the in-app bell and the push notification
+// are two views of the exact same event, not two separate things to keep in sync by hand.
 function notify(userId, type, message, itemId, targetType, targetId) {
   db.prepare('INSERT INTO notifications (id, user_id, type, message, item_id, target_type, target_id) VALUES (?,?,?,?,?,?,?)')
     .run(nanoid(), userId, type, message, itemId || null, targetType || null, targetId || null);
+  pushToUser(userId, 'Zineedo', message, '/');
 }
 
 // Trust stage: listings quietly auto-expire after LISTING_LIFETIME_DAYS so the site
@@ -1888,6 +1931,41 @@ app.post('/api/notifications/mark-all-read', requireAuth, (req, res) => {
 app.post('/api/notifications/:id/read', requireAuth, (req, res) => {
   const result = db.prepare('UPDATE notifications SET is_read = 1 WHERE id = ? AND user_id = ?').run(req.params.id, req.user.id);
   if (result.changes === 0) return res.status(404).json({ error: 'Not found' });
+  res.json({ ok: true });
+});
+
+// ---------- web push subscription management ----------
+// Public (no auth) — the public key itself isn't secret, it's embedded in every subscribe call the
+// frontend makes, same as any other client-side config value.
+app.get('/api/push/vapid-public-key', (req, res) => {
+  if (!PUSH_ENABLED) return res.status(404).json({ error: 'Push notifications are not configured' });
+  res.json({ publicKey: VAPID_PUBLIC_KEY });
+});
+
+// Upsert by endpoint (unique per browser install): re-subscribing the same browser (e.g. after
+// clearing the permission and re-granting it) just refreshes the row's owner/keys instead of
+// erroring on the UNIQUE constraint or piling up duplicate rows for one real device.
+app.post('/api/push/subscribe', requireAuth, (req, res) => {
+  const { endpoint, keys } = req.body || {};
+  if (typeof endpoint !== 'string' || !endpoint || !keys || typeof keys.p256dh !== 'string' || typeof keys.auth !== 'string') {
+    return res.status(400).json({ error: 'Invalid subscription' });
+  }
+  const existing = db.prepare('SELECT id FROM push_subscriptions WHERE endpoint = ?').get(endpoint);
+  if (existing) {
+    db.prepare('UPDATE push_subscriptions SET user_id = ?, p256dh = ?, auth = ? WHERE id = ?')
+      .run(req.user.id, keys.p256dh, keys.auth, existing.id);
+  } else {
+    db.prepare('INSERT INTO push_subscriptions (id, user_id, endpoint, p256dh, auth) VALUES (?,?,?,?,?)')
+      .run(nanoid(), req.user.id, endpoint, keys.p256dh, keys.auth);
+  }
+  res.json({ ok: true });
+});
+
+app.post('/api/push/unsubscribe', requireAuth, (req, res) => {
+  const { endpoint } = req.body || {};
+  if (typeof endpoint === 'string' && endpoint) {
+    db.prepare('DELETE FROM push_subscriptions WHERE endpoint = ? AND user_id = ?').run(endpoint, req.user.id);
+  }
   res.json({ ok: true });
 });
 
