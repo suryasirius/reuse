@@ -54,9 +54,20 @@ const EMAIL_ENABLED = !!(nodemailer && EMAIL_USER && EMAIL_PASS);
 
 let mailTransporter = null;
 if (EMAIL_ENABLED) {
+  // CONNECTION FIX: the 'service: gmail' shorthand connects on port 465 (implicit TLS), which some
+  // cloud hosts' firewalls silently drop outbound, producing a hung connection that times out rather
+  // than a clean error ("[email] failed to send verification code email: Connection timeout" in prod
+  // logs). Port 587 with STARTTLS is far more commonly left open, so use that explicitly instead.
+  // connectionTimeout/greetingTimeout also make a genuinely-blocked port fail in ~10s instead of the
+  // library's much longer default, so a stuck mail send can't quietly tie up the request.
   mailTransporter = nodemailer.createTransport({
-    service: 'gmail',
+    host: 'smtp.gmail.com',
+    port: 587,
+    secure: false,
+    requireTLS: true,
     auth: { user: EMAIL_USER, pass: EMAIL_PASS },
+    connectionTimeout: 10000,
+    greetingTimeout: 10000,
   });
 } else if (IS_PROD) {
   // Not fatal — the server still runs and /api/forgot-password still responds with the generic
