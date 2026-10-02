@@ -1770,7 +1770,12 @@ html,body{overflow-x:hidden;max-width:100%}
 }
 
 @media (max-width:600px){
-  main{display:flex;flex-direction:column;gap:16px}
+  /* BUG FIX: main's base width (line ~279) is calc(100vw - 64px), reserving 64px of side margin
+     meant for the desktop two-column layout. Nothing below ever reset it for mobile, so every phone
+     screen had 64px less usable width than it should — not enough room for the 2-column item grid,
+     causing each card to overflow its grid cell and clip its bottom-right content (location/pickup
+     badge) off the edge of the screen. Full width + small side padding fixes it. */
+  main{display:flex;flex-direction:column;gap:16px;width:100%;max-width:100%;padding-left:14px;padding-right:14px}
   .page-layout{display:contents}
   /* Same "ignore the desktop grid, follow natural DOM order" pattern used by .page-layout above —
      the marketplace layout collapses to plain stacked sections on mobile, in the exact same source
