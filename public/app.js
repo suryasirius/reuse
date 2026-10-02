@@ -1611,29 +1611,51 @@ async function loadMonthlyBadges() {
 // Icons are Lucide (one family, one stroke) instead of medal/food emoji — the theme-* class on
 // .champion-box (already gold/silver/bronze tinted) is what carries the rank meaning now, via
 // the champion-rank-icon's color, rather than a 🥇🥈🥉 glyph.
+// labelIcon = the small top-left "TOP FOOD GIVER" style pill icon; statIcon = the icon next to the
+// confirmed-donations count; emoji = large decorative art on the card (a stand-in for a custom
+// illustration — see loadMonthlyBadges()'s caller for why); footerMsg = the always-visible bottom
+// bar message (distinct from emptyMsg, which only shows while there's no champion yet).
 const CHAMPION_KINDS = [
-  { key: 'food_giver', theme: 'gold', icon: 'soup', title: 'Top Food Giver', emptyMsg: 'Be the first to rescue surplus food this month.' },
-  { key: 'reuse_donor', theme: 'silver', icon: 'recycle', title: 'Top Reuse Donor', emptyMsg: 'Be the first to give an item a second life this month.' },
-  { key: 'community_champion', theme: 'bronze', icon: 'sprout', title: 'Community Champion', emptyMsg: 'Start making an impact today and inspire others.' }
+  { key: 'food_giver', theme: 'gold', labelIcon: 'crown', statIcon: 'soup', emoji: '🍱', title: 'Top Food Giver', emptyMsg: 'Be the first to rescue surplus food this month.', footerMsg: 'Help reduce food waste and feed people in need.' },
+  { key: 'reuse_donor', theme: 'silver', labelIcon: 'recycle', statIcon: 'package', emoji: '📦', title: 'Top Reuse Donor', emptyMsg: 'Be the first to give an item a second life this month.', footerMsg: 'Give items a new home. Reduce waste. Support your community.' },
+  { key: 'community_champion', theme: 'bronze', labelIcon: 'sprout', statIcon: 'users', emoji: '🌍', title: 'Community Champion', emptyMsg: 'Start making an impact today and inspire others.', footerMsg: 'Small actions. Bigger impact. Build a greener community together.' }
 ];
 
 function championBoxHtml(kind, entry) {
+  const count = entry ? entry.count : 0;
   return `<div class="champion-box theme-${kind.theme}">
-    <div class="champion-rank"><i data-lucide="award" class="champion-rank-icon"></i></div>
-    <div class="champion-icon-wrap"><i data-lucide="${kind.icon}" class="champion-icon"></i></div>
-    <div class="champion-title">${kind.title}</div>
-    <div class="champion-name">${entry ? escapeHtml(entry.name) + (entry.account_type === 'business' ? ' <span class="owner-badge">Business</span>' : '') : 'No champion yet'}</div>
-    <div class="champion-sub">${entry ? `${entry.count} completed this month` : kind.emptyMsg}</div>
-    <div class="champion-footer">${entry ? entry.count : 0} confirmed donation${entry && entry.count === 1 ? '' : 's'}</div>
+    <div class="champion-topline">
+      <span class="champion-label-pill"><i data-lucide="${kind.labelIcon}" class="champion-label-icon"></i>${kind.title.toUpperCase()}</span>
+      <span class="champion-rank"><i data-lucide="award" class="champion-rank-icon"></i></span>
+    </div>
+    <div class="champion-main">
+      <div class="champion-text">
+        <div class="champion-name">${entry ? escapeHtml(entry.name) + (entry.account_type === 'business' ? ' <span class="owner-badge">Business</span>' : '') : 'No champion yet'}</div>
+        <div class="champion-sub">${entry ? `${entry.count} completed this month` : kind.emptyMsg}</div>
+        <div class="champion-stat">
+          <span class="champion-stat-icon"><i data-lucide="${kind.statIcon}"></i></span>
+          <div><strong>${count}</strong><small>confirmed donation${count === 1 ? '' : 's'}</small></div>
+        </div>
+      </div>
+      <div class="champion-illustration" aria-hidden="true">${kind.emoji}</div>
+    </div>
+    <div class="champion-footer"><i data-lucide="leaf" style="width:12px;height:12px"></i> ${escapeHtml(kind.footerMsg)}</div>
   </div>`;
 }
 
 function championsSectionHtml(badges) {
   return `
     <div class="champions-top">
-      <div>
-        <div class="champions-head"><i data-lucide="trophy" class="section-icon"></i> Monthly Community Champions</div>
-        <div class="champions-sub">Recognizing the people making the biggest impact this month.</div>
+      <div class="champions-head-row">
+        <span class="champions-head-deco">
+          <span class="champions-sparkle s1">✦</span>
+          <i data-lucide="trophy" class="section-icon"></i>
+          <span class="champions-sparkle s2">✦</span>
+        </span>
+        <div>
+          <div class="champions-head">Monthly Community Champions</div>
+          <div class="champions-sub">Recognizing the people making the biggest impact this month.</div>
+        </div>
       </div>
       <div class="champions-month"><i data-lucide="calendar" style="width:13px;height:13px"></i> ${escapeHtml(badges.month)}</div>
     </div>
@@ -1641,7 +1663,9 @@ function championsSectionHtml(badges) {
       ${CHAMPION_KINDS.map(k => championBoxHtml(k, badges[k.key])).join('')}
     </div>
     <div class="champions-view-all-wrap">
-      <button type="button" class="champions-view-all" id="viewAllContributorsBtn">View all contributors →</button>
+      <span class="champions-sparkle s3">✦</span>
+      <button type="button" class="champions-view-all" id="viewAllContributorsBtn"><i data-lucide="users" style="width:15px;height:15px"></i> View all contributors →</button>
+      <span class="champions-sparkle s4">✦</span>
     </div>`;
 }
 
