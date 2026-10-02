@@ -125,6 +125,12 @@
     </div>
   </div>
 
+  <!-- Food Rescue hero strip — Zineedo's actual point of difference from a generic used-goods
+       marketplace (OLX/FB Marketplace), given its own dedicated spot immediately under the hero
+       instead of being buried as just another item card further down the page. Populated (and
+       emptied when there's nothing active) by loadFoodRescueHero() in app.js. -->
+  <div id="foodRescueHeroSection"></div>
+
   <!-- Mobile-only quick actions row (Post Item / Post Request together) — desktop already has
        "+Post item" in the header and the hero CTA, so this is hidden there (see
        .mobile-only-section in styles.css) and only shown at the mobile breakpoint. -->
@@ -158,7 +164,6 @@
         <div id="urgentSection" class="homepage-section"></div>
         <div id="serviceRequestsSection" class="homepage-section"></div>
       </div>
-      <div id="urgentFoodSection" class="homepage-section"></div>
       <div class="req-type-tabs" id="reqTypeTabs" style="display:none">
         <button class="chip active" data-rt="thing">📦 Item requests</button>
         <button class="chip" data-rt="service">🔧 Service requests</button>

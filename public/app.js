@@ -356,7 +356,7 @@ function applySectionUi() {
   $('#trendingSection').innerHTML = '';
   $('#urgentSection').innerHTML = '';
   if ($('#serviceRequestsSection')) $('#serviceRequestsSection').innerHTML = '';
-  $('#urgentFoodSection').innerHTML = '';
+  if ($('#foodRescueHeroSection')) $('#foodRescueHeroSection').innerHTML = '';
   $('#businessSurplusIntro').innerHTML = '';
   $('#communitySection').innerHTML = '';
   $('#businessTeaserSection').innerHTML = '';
@@ -371,11 +371,13 @@ function applySectionUi() {
   renderQuickCategories();
   if (isRequests) { loadRequests(); } else { loadItems(); loadTrending(); }
   loadBusinessTeaser();
+  loadFoodRescueHero();
   if (state.section === 'consumer') {
-    // Homepage order: Urgent Requests -> Urgent Food Rescue -> Trending (tabs) -> Categories+Products+Impact -> Community Story -> Business teaser -> Popular Collections.
+    // Homepage order: Food Rescue hero (own dedicated spot, right under the hero banner — see
+    // loadFoodRescueHero) -> Urgent Requests -> Trending (tabs) -> Categories+Products+Impact ->
+    // Community Story -> Business teaser -> Popular Collections.
     loadUrgentRequests();
     loadServiceRequestsPreview();
-    loadUrgentFood();
     loadCollections();
     loadCommunityStory();
     // Mobile-homepage-only preview strip (see .mobile-only-section — never visible on desktop).
@@ -427,22 +429,91 @@ function openServiceRequestsAllModal(items) {
   if (window.lucide) lucide.createIcons();
 }
 
-async function loadUrgentFood() {
-  const el = $('#urgentFoodSection');
-  // Scoped to consumer-side listings only, so this homepage strip doesn't mix in urgent Business
-  // Surplus items — those get their own highlight on the Business Surplus page instead.
-  const items = await api('/api/items/urgent?listing_type=consumer');
+// Food Rescue is the one feature that actually separates Zineedo from a generic used-goods
+// marketplace (OLX/FB Marketplace) — previously it was just another item-card strip buried below
+// two other sections, which made it look like just another listing type. Now it gets its own
+// dedicated hero-style panel directly under the hero/search, with a purpose-built card (live
+// countdown, meals/location at a glance, "I can help" CTA) instead of the generic cardHtml(). Still
+// only ever rendered when there's something active — same empty-string-out rule as every other
+// conditional homepage section, so it never shows a hollow "nothing here" panel.
+async function loadFoodRescueHero() {
+  const el = $('#foodRescueHeroSection');
+  if (!el) return;
+  if (state.section !== 'consumer') { el.innerHTML = ''; return; }
+  let items = [];
+  try {
+    // Scoped to consumer-side listings only — urgent Business Surplus gets its own highlight on
+    // the Business Surplus page instead, same split as before.
+    items = await api('/api/items/urgent?listing_type=consumer');
+  } catch (e) { el.innerHTML = ''; return; }
   if (!items.length) { el.innerHTML = ''; return; }
-  const shown = items.slice(0, 3);
-  el.innerHTML = `<div class="highlight-wrap hl-urgent">
-    <h2><i data-lucide="flame" class="section-icon"></i> Urgent Food Rescue ${items.length > 3 ? `<button class="view-all-link" id="urgentFoodViewAll">View all (${items.length}) →</button>` : ''}</h2>
-    <p class="highlight-sub">Surplus food that needs to find a home soon.</p>
-    <div class="grid hscroll">${shown.map(cardHtml).join('')}</div>
-  </div>`;
-  el.querySelectorAll('.card').forEach(c => c.onclick = () => openDetail(c.dataset.id));
-  bindWishlistButtons(el);
-  if ($('#urgentFoodViewAll')) $('#urgentFoodViewAll').onclick = () => openUrgentFoodAllModal(items);
+  const shown = items.slice(0, 8);
+  el.innerHTML = `
+    <div class="food-rescue-hero">
+      <div class="food-rescue-hero-head">
+        <div class="food-rescue-hero-title">
+          <span class="food-rescue-hero-icon" aria-hidden="true">🍱</span>
+          <div>
+            <h2>Food Rescue Near You <span class="food-rescue-urgent-pill">URGENT</span></h2>
+            <p>Fresh surplus food from restaurants, weddings and events. Help reduce food waste.</p>
+          </div>
+        </div>
+        <button type="button" class="view-all-link food-rescue-viewall" id="foodRescueViewAll">View all food rescue →</button>
+      </div>
+      <div class="food-rescue-row">${shown.map(foodRescueCardHtml).join('')}</div>
+    </div>
+  `;
+  el.querySelectorAll('.food-rescue-card').forEach(c => c.onclick = () => openDetail(c.dataset.id));
+  $('#foodRescueViewAll').onclick = () => openUrgentFoodAllModal(items, '🍱 All food rescue near you');
   if (window.lucide) lucide.createIcons();
+}
+
+// "18 min left" / "2 hrs left" / "1 day left" — computed live from the same available_until
+// deadline already used for the "food-until-hint" line on the regular item card/detail page, just
+// expressed as a countdown instead of a fixed time-of-day (more legible at a glance in a small
+// badge). Returns '' when there's no deadline set or it's unparseable, so the badge simply doesn't
+// render rather than showing something wrong.
+function foodRescueCountdownLabel(availableUntil) {
+  if (!availableUntil) return '';
+  const end = new Date(availableUntil);
+  if (isNaN(end.getTime())) return '';
+  const diffMs = end.getTime() - Date.now();
+  if (diffMs <= 0) return 'Ending soon';
+  const mins = Math.round(diffMs / 60000);
+  if (mins < 60) return `${mins} min left`;
+  const hrs = Math.round(mins / 60);
+  if (hrs < 24) return `${hrs} hr${hrs === 1 ? '' : 's'} left`;
+  const days = Math.round(hrs / 24);
+  return `${days} day${days === 1 ? '' : 's'} left`;
+}
+
+function foodRescueCardHtml(item) {
+  const media = (item.media && item.media[0]) || (item.media_url ? { url: item.media_url, thumb_url: item.thumb_url } : null);
+  const photoHtml = media
+    ? `<img src="${escapeHtml(media.thumb_url || media.url)}" alt="" loading="lazy">`
+    : `<span class="thumb-emoji">🍱</span>`;
+  const countdown = foodRescueCountdownLabel(item.available_until);
+  // quantity is free-text the poster typed in (e.g. "serves 10", "2 trays", or left blank) — shown
+  // as-is when present rather than forced into a specific "~N meals" phrasing we can't guarantee
+  // every listing actually has.
+  const initial = (item.owner_name || '?').trim().charAt(0).toUpperCase();
+  return `<div class="food-rescue-card" data-id="${item.id}">
+    <div class="food-rescue-card-photo">
+      ${photoHtml}
+      ${countdown ? `<span class="food-rescue-countdown"><i data-lucide="clock" style="width:11px;height:11px"></i> ${escapeHtml(countdown)}</span>` : ''}
+    </div>
+    <div class="food-rescue-card-body">
+      <h3>${escapeHtml(item.title)}</h3>
+      <div class="food-rescue-meta">
+        ${item.quantity ? `<span><i data-lucide="users" style="width:12px;height:12px"></i> ${escapeHtml(item.quantity)}</span>` : ''}
+        <span><i data-lucide="map-pin" style="width:12px;height:12px"></i> ${escapeHtml(item.owner_location || 'Nearby')}</span>
+      </div>
+      <div class="food-rescue-footer">
+        <span class="food-rescue-poster"><span class="user-avatar food-rescue-avatar">${escapeHtml(initial)}</span>Posted ${timeAgo(item.created_at)}</span>
+        <span class="food-rescue-cta">I can help →</span>
+      </div>
+    </div>
+  </div>`;
 }
 
 // Business Surplus page intro + its own urgent highlight — deliberately NOT a homepage strip
