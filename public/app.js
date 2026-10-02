@@ -1054,6 +1054,13 @@ function bindBottomNav() {
     if (tab) tab.click();
     openPostModal();
   };
+  $('#sheetPostFoodBtn').onclick = () => {
+    closePostSheet();
+    if (!state.user) return openAuthModal('login');
+    const tab = document.querySelector('.section-tab[data-section="consumer"]');
+    if (tab) tab.click();
+    openPostModal({ foodRescue: true });
+  };
   $('#sheetPostItemRequestBtn').onclick = () => {
     closePostSheet();
     if (!state.user) return openAuthModal('login');
@@ -2350,18 +2357,25 @@ const FOOD_PREF_OPTIONS = [
   { value: 'mixed', label: 'Mixed' }
 ];
 
-function openPostModal() {
+// options.foodRescue: set when opened from the dedicated "Give away surplus food" action-sheet
+// option (see #sheetPostFoodBtn) instead of the generic "Give / Exchange an item" one. Still the
+// exact same form/endpoint underneath — this only pre-selects the Food (Surplus) category so the
+// donor lands straight on the pickup-deadline/urgent fields instead of having to find "Food" among
+// ~15 categories themselves, and swaps the heading/placeholder copy to match what they came here
+// to do.
+function openPostModal(options) {
+  const foodRescue = !!(options && options.foodRescue);
   const isBusiness = state.section === 'business_waste';
   showModal(`
-    <h2>${isBusiness ? 'Post business surplus' : 'Post an item'}</h2>
-    <p class="modal-subtitle">Share items you no longer need. Help someone. Help the planet. 🌱</p>
+    <h2>${foodRescue ? '🍱 Give away surplus food' : isBusiness ? 'Post business surplus' : 'Post an item'}</h2>
+    <p class="modal-subtitle">${foodRescue ? 'From a restaurant, event, or wedding — help it find people before it goes to waste.' : 'Share items you no longer need. Help someone. Help the planet. 🌱'}</p>
     <form id="postForm" class="post-item-form">
 
       <div class="form-section">
         <div class="form-section-head"><span class="form-section-num">1</span>Basic Details</div>
 
         <label>Title <span class="req">*</span></label>
-        <input name="title" required maxlength="120" id="postTitle" placeholder="${isBusiness ? 'e.g. 20 office chairs, CNC metal scrap' : 'e.g. Old iPhone 8, working condition'}">
+        <input name="title" required maxlength="120" id="postTitle" placeholder="${foodRescue ? 'e.g. Wedding Biryani (Veg), serves 40' : isBusiness ? 'e.g. 20 office chairs, CNC metal scrap' : 'e.g. Old iPhone 8, working condition'}">
 
         <label>Photos <span class="hint-inline">Optional · Up to 5 photos</span></label>
         <div class="photo-dropzone" id="photoDropzone" tabindex="0" role="button" aria-label="Upload photos">
@@ -2373,20 +2387,20 @@ function openPostModal() {
         <p class="hint">Good photos = more chances to find the right person.</p>
 
         <label>Description <span class="req">*</span></label>
-        <textarea name="description" required maxlength="1500" placeholder="Describe condition, pickup details, reason for giving, etc."></textarea>
+        <textarea name="description" required maxlength="1500" placeholder="${foodRescue ? 'What is it, roughly how much, any dietary notes (veg/non-veg)...' : 'Describe condition, pickup details, reason for giving, etc.'}"></textarea>
       </div>
 
       <div class="form-section">
         <div class="form-section-head"><span class="form-section-num">2</span>Item Details</div>
 
         <label>Category <span class="req">*</span></label>
-        <select name="category" id="postCategory" required>${activeCategoryList().map(c => `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`).join('')}</select>
+        <select name="category" id="postCategory" required>${activeCategoryList().map(c => `<option value="${escapeHtml(c)}" ${foodRescue && c === 'Food (Surplus)' ? 'selected' : ''}>${escapeHtml(c)}</option>`).join('')}</select>
 
         <div class="row2">
           <div><label>Condition <span class="req">*</span></label>
             <select name="condition"><option value="new">New</option><option value="like_new">Like new</option><option value="used" selected>Used</option><option value="needs_repair">Needs repair</option></select>
           </div>
-          <div><label>Quantity</label><input name="quantity" placeholder="e.g. 50 kg, 200 L, 2 pieces"></div>
+          <div><label>Quantity</label><input name="quantity" placeholder="${foodRescue ? 'e.g. serves 40, 2 trays' : 'e.g. 50 kg, 200 L, 2 pieces'}"></div>
         </div>
 
         <label>Offer type <span class="req">*</span></label>
@@ -2527,7 +2541,7 @@ function openPostModal() {
         <input type="datetime-local" name="available_until" required>
         <label>Food type</label>
         <select name="food_pref">${FOOD_PREF_OPTIONS.map(o => `<option value="${o.value}">${o.label}</option>`).join('')}</select>
-        <label><input type="checkbox" id="foodUrgent" style="width:auto;display:inline-block;margin-right:6px">🔥 Urgent — pickup needed soon</label>
+        <label><input type="checkbox" id="foodUrgent" ${foodRescue ? 'checked' : ''} style="width:auto;display:inline-block;margin-right:6px">🔥 Urgent — pickup needed soon</label>
         <p class="hint food-safety-hint">Food safety: Please share accurate information about the food and its condition. Zineedo does not inspect or certify food safety. Recipients should use their own judgment before consuming.</p>
       ` : '';
     }

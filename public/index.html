@@ -369,6 +369,14 @@
       <span class="action-sheet-icon give">🟢</span>
       <span class="action-sheet-text"><strong>Give / Exchange an item</strong><small>Post an item</small></span>
     </button>
+    <!-- Food Rescue gets its own option instead of being buried as one of ~15 categories inside
+         the generic item form — same posting flow underneath (openPostModal), just pre-selected to
+         the Food (Surplus) category so the donor lands straight on the pickup-deadline/urgent
+         fields that make a food listing actually usable. -->
+    <button type="button" class="action-sheet-option" id="sheetPostFoodBtn">
+      <span class="action-sheet-icon food">🍱</span>
+      <span class="action-sheet-text"><strong>Give away surplus food</strong><small>Food Rescue — restaurants, events, weddings</small></span>
+    </button>
     <button type="button" class="action-sheet-option" id="sheetPostItemRequestBtn">
       <span class="action-sheet-icon ask">📦</span>
       <span class="action-sheet-text"><strong>Ask for an item</strong><small>Post an item request</small></span>
