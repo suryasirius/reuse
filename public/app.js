@@ -11,7 +11,7 @@ const state = {
   // page to request, itemsHasMore/requestsHasMore mirror the backend's hasMore flag from Phase 6's
   // opt-in pagination response shape ({ items/requests, page, limit, total, hasMore }).
   itemsPage: 1, requestsPage: 1, itemsHasMore: false, requestsHasMore: false,
-  wishlist: new Set(), monthlyBadges: null,
+  wishlist: loadWishlistFromStorage(), monthlyBadges: null,
   // Cached once after login from the existing GET /api/users/:id/profile endpoint, purely to show
   // "Member since ..." in the profile dropdown header. Not a new data source or duplicated field.
   myMemberSince: null,
@@ -20,6 +20,33 @@ const state = {
   // People asking for help, Champions, compact Impact card). 'browse' = full categories + grid.
   view: 'home'
 };
+
+// Saved Items (wishlist) persistence. Previously state.wishlist was a plain in-memory Set with
+// nothing writing it to disk, so every saved item vanished on refresh/reopen — this was the #1
+// easy-fix gap vs. popular marketplace apps, which all keep "saved"/"liked" items across sessions.
+// localStorage (not a server table) is intentional for this pass: it's a one-line read/write, needs
+// no new API route or DB table, and covers the real complaint (survives a refresh) even though it
+// won't follow the user to a different browser/device — that upgrade can come later if needed.
+const WISHLIST_STORAGE_KEY = 'zineedo_wishlist';
+function loadWishlistFromStorage() {
+  try {
+    const raw = localStorage.getItem(WISHLIST_STORAGE_KEY);
+    const ids = raw ? JSON.parse(raw) : [];
+    return new Set(Array.isArray(ids) ? ids : []);
+  } catch {
+    // Corrupted/blocked storage (private browsing, quota, bad JSON) — fail open to an empty
+    // wishlist rather than breaking the whole app on load.
+    return new Set();
+  }
+}
+function saveWishlistToStorage() {
+  try {
+    localStorage.setItem(WISHLIST_STORAGE_KEY, JSON.stringify([...state.wishlist]));
+  } catch {
+    // Storage unavailable/full — saved items just won't persist this session; not worth surfacing
+    // an error to the user for a non-critical feature.
+  }
+}
 
 const SECTION_HINTS = {
   consumer: "Give. Find. Reuse. Give away things you no longer need, or find useful items near you.",
@@ -206,7 +233,21 @@ async function init() {
   }, { passive: true });
   animateSearchPlaceholder();
   checkResetTokenInUrl();
+  checkSharedItemInUrl();
   if (window.lucide) lucide.createIcons();
+}
+
+// If the page was opened from a shared listing link (?item=ID, written by bindShareButton), open
+// that item's detail modal directly instead of just landing on the homepage — otherwise a shared
+// link would silently drop the person it was meant for onto the generic browse page.
+function checkSharedItemInUrl() {
+  const params = new URLSearchParams(location.search);
+  const itemId = params.get('item');
+  if (!itemId) return;
+  openDetail(itemId).catch(() => {});
+  params.delete('item');
+  const clean = location.pathname + (params.toString() ? `?${params}` : '') + location.hash;
+  history.replaceState(null, '', clean);
 }
 
 // ---------- hero: static single-line search prompt + Post button (homepage restructure v2) ----------
@@ -1677,6 +1718,7 @@ function requestPriceLabel(r) {
 const LOC_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>`;
 const PACKAGE_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8l-9-5-9 5 9 5 9-5z"/><path d="M3 8v8l9 5 9-5V8"/><path d="M12 13v8"/></svg>`;
 const HEART_SVG = `<svg viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.6l-1-1a5.5 5.5 0 0 0-7.8 7.8l1 1L12 21l7.8-7.6 1-1a5.5 5.5 0 0 0 0-7.8Z"/></svg>`;
+const SHARE_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16" style="vertical-align:-3px"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.6" y1="10.6" x2="15.4" y2="6.4"/><line x1="8.6" y1="13.4" x2="15.4" y2="17.6"/></svg>`;
 const CHECK_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`;
 function ownerNameHtml(name, verified, ownerId) {
   // Clicking a name opens that user's public profile (see the delegated .owner-name-link handler
@@ -1841,6 +1883,7 @@ function bindWishlistButtons(container) {
       // Saved Items to work at all.
       const id = btn.dataset.wish;
       if (state.wishlist.has(id)) state.wishlist.delete(id); else state.wishlist.add(id);
+      saveWishlistToStorage();
       btn.classList.toggle('active');
     };
   });
@@ -2517,7 +2560,10 @@ async function openDetail(id) {
   const isOwner = state.user && state.user.id === item.user_id;
   showModal(`
     ${galleryHtml(item)}
-    <h2>${escapeHtml(item.title)}</h2>
+    <div class="detail-title-row">
+      <h2>${escapeHtml(item.title)}</h2>
+      <button type="button" id="shareItemBtn" class="share-btn" aria-label="Share this listing">${SHARE_SVG} Share</button>
+    </div>
     ${badgeHtml(item)}
     <p style="margin-top:12px">${escapeHtml(item.description)}</p>
     <div class="hint">Category: ${escapeHtml(displayCategory(item.category))} · Condition: ${escapeHtml(item.condition)} ${item.quantity ? '· Qty: ' + escapeHtml(item.quantity) : ''}</div>
@@ -2572,10 +2618,40 @@ async function openDetail(id) {
   const galleryImages = media.filter(m => m.media_type !== 'video');
   modalRoot.querySelectorAll('.gallery img').forEach((img, i) => { img.onclick = () => openLightbox(galleryImages, i); img.style.cursor = 'zoom-in'; });
   bindCopyButtons();
+  bindShareButton(item);
+}
+
+// Share this listing. navigator.share() gives the native OS share sheet (WhatsApp, etc.) on mobile
+// browsers that support it; desktop/unsupported browsers fall back to copying the link, mirroring
+// the existing .copy-btn "Copied!" feedback pattern elsewhere on this page.
+function bindShareButton(item) {
+  const btn = $('#shareItemBtn');
+  if (!btn) return;
+  const shareUrl = `${location.origin}/?item=${encodeURIComponent(item.id)}`;
+  btn.onclick = async () => {
+    const shareData = { title: item.title, text: `Check out "${item.title}" on Zineedo`, url: shareUrl };
+    if (navigator.share) {
+      try { await navigator.share(shareData); } catch { /* user cancelled the share sheet — not an error */ }
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(shareUrl);
+      const orig = btn.innerHTML;
+      btn.innerHTML = 'Link copied!';
+      setTimeout(() => { btn.innerHTML = orig; }, 1500);
+    } catch {
+      // No clipboard API either (very old browser) — nothing more we can do silently.
+    }
+  };
 }
 
 // ---------- edit item modal ----------
 function openEditModal(item) {
+  // Photos: item.media is the approved list (attachMedia always populates it); pending_media_count
+  // covers anything still awaiting moderation, which can't be previewed/removed as a normal photo
+  // yet (no public URL exists for it) — shown as a plain status line instead, same wording used
+  // elsewhere on the card/gallery for this exact state.
+  const existingPhotos = item.media || [];
   showModal(`
     <h2>Edit item</h2>
     <form id="editForm">
@@ -2603,11 +2679,63 @@ function openEditModal(item) {
       </select>
       <div id="editPriceExtra"></div>
       ${pickupFieldsHtml(item)}
-      <p class="hint">Note: editing does not change already-uploaded photos.</p>
+      <label>Photos <span class="hint-inline">Up to 5 total</span></label>
+      <div class="photo-thumbs" id="editExistingThumbs">${existingPhotos.map(m => `
+        <div class="photo-thumb" data-media-id="${m.id}">
+          <img src="${escapeHtml(m.thumb_url || m.url)}" alt="">
+          <button type="button" class="photo-thumb-remove" data-remove-media="${m.id}" aria-label="Remove photo">×</button>
+        </div>`).join('')}</div>
+      ${item.pending_media_count > 0 ? `<p class="hint">🕒 ${item.pending_media_count} photo${item.pending_media_count > 1 ? 's' : ''} still under review.</p>` : ''}
+      <div class="photo-dropzone" id="editPhotoDropzone" tabindex="0" role="button" aria-label="Add photos">
+        <span class="photo-dropzone-icon">📷</span>
+        <span class="photo-dropzone-text"><strong>Add photos</strong><br>or drag and drop</span>
+        <input type="file" name="media" id="editMediaInput" accept="image/*" multiple class="photo-input-hidden">
+      </div>
+      <div class="photo-thumbs" id="editNewThumbs"></div>
       <div class="error" id="editError"></div>
       <button class="primary-btn" type="submit">Save changes</button>
     </form>
   `);
+
+  // Deletions are tracked client-side and only sent on submit — clicking × just hides the thumb and
+  // marks it, so a stray click doesn't commit anything until "Save changes" is actually pressed.
+  const deletedMediaIds = new Set();
+  $('#editExistingThumbs').querySelectorAll('[data-remove-media]').forEach(btn => {
+    btn.onclick = () => {
+      const id = btn.dataset.removeMedia;
+      deletedMediaIds.add(id);
+      btn.closest('.photo-thumb').remove();
+    };
+  });
+
+  // New-photo dropzone — same pattern as the post-item form's #mediaInput/#photoThumbs (preview
+  // only; the actual upload+moderation happens server-side on submit).
+  const editMediaInput = $('#editMediaInput');
+  const editDropzone = $('#editPhotoDropzone');
+  const editNewThumbs = $('#editNewThumbs');
+  function renderEditNewThumbs() {
+    const files = Array.from(editMediaInput.files || []);
+    editNewThumbs.innerHTML = '';
+    files.forEach(file => {
+      const thumb = document.createElement('div');
+      thumb.className = 'photo-thumb';
+      thumb.innerHTML = `<img src="${URL.createObjectURL(file)}" alt="">`;
+      thumb.title = file.name;
+      editNewThumbs.appendChild(thumb);
+    });
+  }
+  editDropzone.onclick = () => editMediaInput.click();
+  editDropzone.onkeydown = (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); editMediaInput.click(); } };
+  editMediaInput.onchange = renderEditNewThumbs;
+  ['dragover', 'dragenter'].forEach(evt => editDropzone.addEventListener(evt, (e) => { e.preventDefault(); editDropzone.classList.add('dragover'); }));
+  ['dragleave', 'dragend', 'drop'].forEach(evt => editDropzone.addEventListener(evt, (e) => { e.preventDefault(); editDropzone.classList.remove('dragover'); }));
+  editDropzone.addEventListener('drop', (e) => {
+    if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length) {
+      editMediaInput.files = e.dataTransfer.files;
+      renderEditNewThumbs();
+    }
+  });
+
   const editPriceExtra = $('#editPriceExtra');
   const updateEditPriceExtra = () => {
     const v = $('#editPriceType').value;
@@ -2630,12 +2758,27 @@ function openEditModal(item) {
 
   $('#editForm').onsubmit = async (e) => {
     e.preventDefault();
-    const fd = Object.fromEntries(new FormData(e.target));
+    const hasNewFiles = editMediaInput.files && editMediaInput.files.length > 0;
+    const hasDeletions = deletedMediaIds.size > 0;
     try {
-      await api('/api/items/' + item.id, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(fd) });
+      let updated;
+      if (hasNewFiles || hasDeletions) {
+        // Photos changed — submit as multipart so the new files (if any) actually reach the server;
+        // a plain JSON body can't carry File objects. The form's existing fields (title, category,
+        // etc.) ride along unchanged inside the same FormData.
+        const fd = new FormData(e.target);
+        if (hasDeletions) fd.set('delete_media_ids', JSON.stringify([...deletedMediaIds]));
+        updated = await api('/api/items/' + item.id, { method: 'PATCH', body: fd });
+      } else {
+        const fd = Object.fromEntries(new FormData(e.target));
+        updated = await api('/api/items/' + item.id, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(fd) });
+      }
       closeModal();
       loadItems();
       openDetail(item.id);
+      if (hasNewFiles && updated.pending_media_count > 0) {
+        showToast(`Saved! ${updated.pending_media_count} new photo${updated.pending_media_count > 1 ? 's are' : ' is'} still being reviewed and will appear once approved.`, 'info');
+      }
     } catch (err) { $('#editError').textContent = err.message; }
   };
 }
@@ -3868,7 +4011,7 @@ function openLocationPickerModal(currentLocationText, onConfirm) {
 async function openSavedItemsModal() {
   if (!state.user) { closeModal(); return openAuthModal('login'); }
   const ids = [...state.wishlist];
-  showModal(`<h2>❤️ Saved Items</h2><p class="hint">Items you've saved this session — the heart doesn't persist across a page reload yet.</p><div id="savedItemsGrid" class="grid" style="margin-top:12px"></div>`);
+  showModal(`<h2>❤️ Saved Items</h2><p class="hint">Items you've saved on this device.</p><div id="savedItemsGrid" class="grid" style="margin-top:12px"></div>`);
   const grid = $('#savedItemsGrid');
   if (!ids.length) {
     grid.innerHTML = `<div class="empty">You haven't saved any items yet. Tap the heart on any item to save it here.</div>`;
@@ -3885,6 +4028,7 @@ async function openSavedItemsModal() {
       btn.onclick = (e) => {
         e.stopPropagation();
         state.wishlist.delete(btn.dataset.wish);
+        saveWishlistToStorage();
         btn.closest('.card').remove();
         if (!grid.querySelector('.card')) grid.innerHTML = `<div class="empty">You haven't saved any items yet. Tap the heart on any item to save it here.</div>`;
       };

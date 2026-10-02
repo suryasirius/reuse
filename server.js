@@ -1519,12 +1519,85 @@ app.get('/api/home-highlights', optionalAuth, (req, res) => {
   res.json(result);
 });
 
-app.patch('/api/items/:id', requireAuth, (req, res) => {
+// Photo management on edit: previously this route only took a JSON body and never touched
+// item_media at all ("editing does not change already-uploaded photos" was a deliberate, documented
+// limitation in the edit form). upload.array() here is additive and safe for every existing caller —
+// multer no-ops on a non-multipart request (plain JSON edits and the "mark closed" status PATCH both
+// still hit this route with Content-Type: application/json and are unaffected), and only a request
+// that actually sends files/deletions as multipart/form-data engages the new code paths below.
+app.patch('/api/items/:id', requireAuth, upload.array('media', MAX_UPLOAD_FILES), async (req, res) => {
   const item = db.prepare('SELECT * FROM items WHERE id = ?').get(req.params.id);
-  if (!item) return res.status(404).json({ error: 'Not found' });
-  if (item.user_id !== req.user.id) return res.status(403).json({ error: 'Not your item' });
+  const files = req.files || [];
+  if (!item) {
+    files.forEach(f => { try { fs.unlinkSync(f.path); } catch {} });
+    return res.status(404).json({ error: 'Not found' });
+  }
+  if (item.user_id !== req.user.id) {
+    files.forEach(f => { try { fs.unlinkSync(f.path); } catch {} });
+    return res.status(403).json({ error: 'Not your item' });
+  }
   const { status, title, description, category, condition, quantity, price_type, price, exchange_for, rent_rate, rent_period, deposit, pickup_available, pickup_type, pickup_area, pickup_address, pickup_instructions,
-    available_until, is_urgent, food_pref, is_edible_food } = req.body;
+    available_until, is_urgent, food_pref, is_edible_food, delete_media_ids } = req.body;
+
+  // Remove photos the owner chose to delete. Scoped to this item's own media (a media id that
+  // belongs to someone else's item is silently ignored, not an error) so an owner can never delete
+  // another listing's photo by guessing/reusing an id.
+  let deletedIds = [];
+  if (delete_media_ids) {
+    try {
+      const parsed = JSON.parse(delete_media_ids);
+      if (Array.isArray(parsed)) deletedIds = parsed.filter(x => typeof x === 'string');
+    } catch { /* malformed — treat as no deletions rather than failing the whole edit */ }
+  }
+  if (deletedIds.length) {
+    const ownedMedia = db.prepare(`SELECT id, url FROM item_media WHERE item_id = ? AND id IN (${deletedIds.map(() => '?').join(',')})`).all(item.id, ...deletedIds);
+    for (const m of ownedMedia) {
+      db.prepare('DELETE FROM item_media WHERE id = ?').run(m.id);
+      // Best-effort disk cleanup — a missing file here is never fatal to the edit itself.
+      try { if (m.url.startsWith('/uploads/')) fs.unlinkSync(path.join(uploadDir, path.basename(m.url))); } catch {}
+    }
+  }
+
+  // Add newly uploaded photos, through the exact same moderation pipeline as posting a new listing
+  // (POST /api/items above) — nothing added here skips the review queue.
+  if (files.length) {
+    const existingCount = db.prepare("SELECT COUNT(*) AS c FROM item_media WHERE item_id = ? AND status IN ('approved','pending_review')").get(item.id).c;
+    if (existingCount - deletedIds.length + files.length > MAX_UPLOAD_FILES) {
+      files.forEach(f => { try { fs.unlinkSync(f.path); } catch {} });
+      return res.status(400).json({ error: `A listing can have at most ${MAX_UPLOAD_FILES} photos` });
+    }
+    if (!validateUploadedFiles(files)) {
+      files.forEach(f => { try { fs.unlinkSync(f.path); } catch {} });
+      return res.status(400).json({ error: 'One or more files were not valid images' });
+    }
+    const maxPosition = db.prepare('SELECT COALESCE(MAX(position), -1) AS p FROM item_media WHERE item_id = ?').get(item.id).p;
+    let nextPosition = maxPosition + 1;
+    for (const f of files) {
+      const decision = await moderateImage(f.path, f.mimetype);
+      let url = '/uploads/' + f.filename, thumbUrl = null;
+      if (decision.status === 'approved') {
+        const processed = await processApprovedImage(f.path, f.mimetype);
+        url = processed.url; thumbUrl = processed.thumbUrl;
+      }
+      db.prepare("INSERT INTO item_media (id, item_id, url, thumb_url, media_type, position, status, moderation_note, moderated_at, moderated_by) VALUES (?,?,?,?,?,?,?,?, datetime('now'), 'auto')")
+        .run(nanoid(), item.id, url, thumbUrl, 'image', nextPosition++, decision.status, decision.note);
+      // If this item didn't have a cover photo yet, give it one as soon as one clears moderation.
+      if (decision.status === 'approved') {
+        const freshItem = db.prepare('SELECT media_url FROM items WHERE id = ?').get(item.id);
+        if (!freshItem.media_url) db.prepare("UPDATE items SET media_url = ?, media_type = 'image' WHERE id = ?").run(url, item.id);
+      }
+    }
+  }
+  // If the deleted photo(s) included the current cover photo, promote the next approved photo (if
+  // any) so the item doesn't keep pointing at a now-deleted file.
+  if (deletedIds.length) {
+    const current = db.prepare('SELECT media_url FROM items WHERE id = ?').get(item.id);
+    const stillExists = current.media_url && db.prepare("SELECT 1 FROM item_media WHERE item_id = ? AND url = ? AND status = 'approved'").get(item.id, current.media_url);
+    if (current.media_url && !stillExists) {
+      const next = db.prepare("SELECT url FROM item_media WHERE item_id = ? AND status = 'approved' ORDER BY position ASC LIMIT 1").get(item.id);
+      db.prepare('UPDATE items SET media_url = ?, media_type = ? WHERE id = ?').run(next ? next.url : '', next ? 'image' : '', item.id);
+    }
+  }
 
   if (status) {
     // PHASE 8 HARDENING: this previously accepted ANY string with zero validation — a client could
