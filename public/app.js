@@ -1744,7 +1744,10 @@ function miniBadgeHtml(ownerId) {
 
 function requestCardHtml(r) {
   const icon = r.request_type === 'service' ? '🛠️' : '🔎';
-  const badgeCls = r.is_urgent ? 'price-badge urgent' : 'price-badge';
+  // Urgent always wins visually (red) regardless of budget type — same priority order as the item
+  // card's urgent-food-badge taking precedence over its price-badge color.
+  const typeCls = r.status === 'fulfilled' ? 'claimed' : (r.budget_type === 'paid' ? 'paid' : r.budget_type === 'exchange' ? 'exchange' : 'free');
+  const badgeCls = r.is_urgent ? 'price-badge urgent' : `price-badge ${typeCls}`;
   const label = r.status === 'fulfilled' ? 'Fulfilled' : requestPriceLabel(r);
   return `<div class="card" data-id="${r.id}">
     <div class="thumb">
@@ -1806,10 +1809,24 @@ function thumbInnerHtml(item) {
 
 function itemPriceLabel(item) {
   if (item.status === 'claimed') return 'Claimed';
+  // A "Paid" listing priced at ₹0 reads as a mistake/test artifact to a visitor ("₹0" next to a
+  // green Free badge looks like a bug), not a deliberate price — treat it the same as Free rather
+  // than printing a literal zero rupee amount.
+  if (item.price_type === 'paid' && (!item.price || Number(item.price) <= 0)) return 'Free';
   if (item.price_type === 'paid') return '₹' + item.price;
   if (item.price_type === 'rent') return `₹${item.rent_rate}/${item.rent_period || 'day'}`;
   if (item.price_type === 'exchange') return 'Exchange';
   return 'Free';
+}
+
+// Color-coding for the card thumbnail's price badge, so Free/Paid/Rent/Exchange are distinguishable
+// at a glance while scrolling a grid — mirrors the palette already used on the item detail page's
+// .badge.free/.paid/.rent/.exchange classes (see styles.css), just as a solid pill instead of a
+// light-background chip (the badge sits on top of a photo here, so it needs more contrast).
+function itemPriceBadgeClass(item) {
+  if (item.status === 'claimed') return 'claimed';
+  if (item.price_type === 'paid' && (!item.price || Number(item.price) <= 0)) return 'free';
+  return ['paid', 'rent', 'exchange'].includes(item.price_type) ? item.price_type : 'free';
 }
 
 function pickupFlagHtml(item) {
@@ -1855,7 +1872,7 @@ function cardHtml(item) {
   return `<div class="card" data-id="${item.id}">
     <div class="thumb">
       ${thumbInnerHtml(item)}
-      <span class="price-badge">${itemPriceLabel(item)}</span>
+      <span class="price-badge ${itemPriceBadgeClass(item)}">${itemPriceLabel(item)}</span>
       ${item.is_urgent ? `<span class="urgent-food-badge">🔥 Urgent</span>` : ''}
       <button type="button" class="wishlist-btn${liked ? ' active' : ''}" data-wish="${item.id}" aria-label="Save to wishlist">${HEART_SVG}</button>
     </div>
@@ -3477,7 +3494,7 @@ function myPostCardHtml(item) {
   return `<div class="card my-post-card" data-id="${item.id}" data-kind="item">
     <div class="thumb">
       ${thumbInnerHtml(item)}
-      <span class="price-badge">${itemPriceLabel(item)}</span>
+      <span class="price-badge ${itemPriceBadgeClass(item)}">${itemPriceLabel(item)}</span>
     </div>
     <div class="body">
       <h3>${escapeHtml(item.title)}</h3>

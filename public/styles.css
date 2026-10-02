@@ -847,6 +847,15 @@ main{max-width:1800px;width:calc(100vw - 64px);margin:0 auto;padding:14px 12px 6
   background:var(--brand);color:#fff;font-size:12.5px;font-weight:700;
   border-radius:999px;box-shadow:0 2px 6px rgba(0,0,0,.12);white-space:nowrap;
 }
+/* One color per offer type so Free/Paid/Rent/Exchange read apart from each other while scrolling a
+   grid, instead of every badge being the same green regardless of what it means. Mirrors the hues
+   already used for .badge.free/.paid/.rent/.exchange on the item detail page (see above), just as a
+   solid-fill pill (needs more contrast sitting on top of a photo) rather than a light chip. */
+.card .price-badge.free{background:var(--brand)}
+.card .price-badge.paid{background:var(--orange)}
+.card .price-badge.rent{background:var(--blue)}
+.card .price-badge.exchange{background:#6A4FC7}
+.card .price-badge.claimed{background:var(--muted)}
 .card .price-badge.urgent{background:var(--danger)}
 .card .wishlist-btn{
   position:absolute;top:10px;right:10px;width:34px;height:34px;border-radius:50%;
