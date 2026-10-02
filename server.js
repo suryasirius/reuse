@@ -18,11 +18,6 @@ const fs = require('fs');
 // reason, publishing falls back to the old plain-rename behavior rather than breaking uploads.
 let sharp = null;
 try { sharp = require('sharp'); } catch { /* falls back to unprocessed publish below */ }
-// Transactional email (password reset): optional at runtime the same way sharp is above — if
-// nodemailer isn't installed or EMAIL_USER/EMAIL_PASS aren't configured, sendPasswordResetEmail()
-// below just no-ops and callers fall back to their existing non-prod dev behavior.
-let nodemailer = null;
-try { nodemailer = require('nodemailer'); } catch { /* email sending disabled until installed */ }
 const crypto = require('crypto');
 const rateLimit = require('express-rate-limit');
 const helmet = require('helmet');
@@ -43,72 +38,71 @@ const SESSION_MAX_AGE_MS = 30 * 24 * 3600 * 1000; // 30 days, matches previous c
 const RESET_TOKEN_TTL_MS = 30 * 60 * 1000; // 30 minutes
 
 // ---------- transactional email ----------
-// Gmail SMTP via an App Password (EMAIL_USER / EMAIL_PASS env vars). Kept deliberately simple —
-// this app sends low-volume transactional mail (password resets) rather than bulk/marketing mail,
-// so Gmail's send limits are not a concern. SITE_URL controls the host used in reset links sent to
-// users; defaults to the production domain since that's the only place real email actually sends.
-const EMAIL_USER = process.env.EMAIL_USER || '';
-const EMAIL_PASS = process.env.EMAIL_PASS || '';
+// EMAIL PROVIDER CHANGE: switched from Gmail SMTP to Resend's HTTPS API. Confirmed live on this
+// Droplet that outbound SMTP (both port 465 and 587 to smtp.gmail.com) is network-blocked —
+// `cat < /dev/tcp/smtp.gmail.com/587` just hangs/times out, which is what was producing
+// "[email] failed to send verification code email: Connection timeout" in prod no matter which
+// Gmail port was used. That's a network-level block, not fixable from inside the app. Resend sends
+// over a normal HTTPS POST (port 443, same as any other API call this server already makes to
+// Sightengine) — nothing blocks that. RESEND_FROM defaults to Resend's own shared test address,
+// which works immediately with zero DNS setup; switch to a "you@zineedo.in" address later by
+// verifying the zineedo.in domain in the Resend dashboard and setting RESEND_FROM.
+const RESEND_API_KEY = process.env.RESEND_API_KEY || '';
+const RESEND_FROM = process.env.RESEND_FROM || 'Zineedo <onboarding@resend.dev>';
 const SITE_URL = process.env.SITE_URL || 'https://zineedo.in';
-const EMAIL_ENABLED = !!(nodemailer && EMAIL_USER && EMAIL_PASS);
+const EMAIL_ENABLED = !!RESEND_API_KEY;
 
-let mailTransporter = null;
-if (EMAIL_ENABLED) {
-  // CONNECTION FIX: the 'service: gmail' shorthand connects on port 465 (implicit TLS), which some
-  // cloud hosts' firewalls silently drop outbound, producing a hung connection that times out rather
-  // than a clean error ("[email] failed to send verification code email: Connection timeout" in prod
-  // logs). Port 587 with STARTTLS is far more commonly left open, so use that explicitly instead.
-  // connectionTimeout/greetingTimeout also make a genuinely-blocked port fail in ~10s instead of the
-  // library's much longer default, so a stuck mail send can't quietly tie up the request.
-  mailTransporter = nodemailer.createTransport({
-    host: 'smtp.gmail.com',
-    port: 587,
-    secure: false,
-    requireTLS: true,
-    auth: { user: EMAIL_USER, pass: EMAIL_PASS },
-    connectionTimeout: 10000,
-    greetingTimeout: 10000,
-  });
-} else if (IS_PROD) {
+if (!EMAIL_ENABLED && IS_PROD) {
   // Not fatal — the server still runs and /api/forgot-password still responds with the generic
   // message — but this is loud on purpose: silently-broken password resets in production are easy
   // to miss until a real user reports they never got an email.
-  console.warn('[email] EMAIL_USER/EMAIL_PASS not configured (or nodemailer not installed) — password reset emails will NOT be sent.');
+  console.warn('[email] RESEND_API_KEY not configured — verification/password reset emails will NOT be sent.');
 }
 
-// Fire-and-forget by design: used by /api/verify/request below. Unlike sendPasswordResetEmail,
-// there's no "don't leak account existence" constraint here — the caller is already logged in as
-// the account being verified (requireAuth), so there's nothing to hide by awaiting or not.
+// Shared sender used by both email types below. Fire-and-forget by design (never awaited on a
+// request path) — a slow or failing send must never delay or change an API response.
+async function sendTransactionalEmail(toEmail, subject, text, html) {
+  if (!EMAIL_ENABLED) return;
+  try {
+    const res = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${RESEND_API_KEY}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ from: RESEND_FROM, to: toEmail, subject, text, html }),
+    });
+    if (!res.ok) {
+      const body = await res.text().catch(() => '');
+      console.error('[email] Resend API error:', res.status, body);
+    }
+  } catch (err) {
+    console.error('[email] failed to send via Resend:', err.message);
+  }
+}
+
+// Used by /api/verify/request below. Unlike sendPasswordResetEmail, there's no "don't leak account
+// existence" constraint here — the caller is already logged in as the account being verified
+// (requireAuth), so there's nothing to hide by awaiting or not.
 function sendVerificationCodeEmail(toEmail, code) {
-  if (!mailTransporter) return;
-  mailTransporter.sendMail({
-    from: `"Zineedo" <${EMAIL_USER}>`,
-    to: toEmail,
-    subject: 'Your Zineedo verification code',
-    text: `Your Zineedo verification code is: ${code}\n\nEnter this in the app to verify your account. If you didn't request this, you can ignore this email.`,
-    html: `<p>Your Zineedo verification code is:</p><p style="font-size:24px;font-weight:bold;letter-spacing:4px">${code}</p><p>Enter this in the app to verify your account. If you didn't request this, you can ignore this email.</p>`,
-  }).catch((err) => {
-    console.error('[email] failed to send verification code email:', err.message);
-  });
+  sendTransactionalEmail(
+    toEmail,
+    'Your Zineedo verification code',
+    `Your Zineedo verification code is: ${code}\n\nEnter this in the app to verify your account. If you didn't request this, you can ignore this email.`,
+    `<p>Your Zineedo verification code is:</p><p style="font-size:24px;font-weight:bold;letter-spacing:4px">${code}</p><p>Enter this in the app to verify your account. If you didn't request this, you can ignore this email.</p>`
+  );
 }
 
-// Fire-and-forget by design: callers don't await this on the request path, so a slow or failing
-// SMTP send never delays or breaks the /api/forgot-password response (which must look identical
-// whether or not the account/email exists, per GENERIC_RESET_MESSAGE below).
+// Callers don't await this on the request path, so a slow or failing send never delays or breaks
+// the /api/forgot-password response (which must look identical whether or not the account/email
+// exists, per GENERIC_RESET_MESSAGE below).
 function sendPasswordResetEmail(toEmail, rawToken) {
-  if (!mailTransporter) return;
   // Matches the frontend's checkResetTokenInUrl() in public/app.js, which looks for ?reset=TOKEN
   // on the root page (not a separate reset-password.html — no such file exists in public/).
   const resetLink = `${SITE_URL}/?reset=${encodeURIComponent(rawToken)}`;
-  mailTransporter.sendMail({
-    from: `"Zineedo" <${EMAIL_USER}>`,
-    to: toEmail,
-    subject: 'Reset your Zineedo password',
-    text: `We received a request to reset your Zineedo password. This link expires in 30 minutes:\n\n${resetLink}\n\nIf you didn't request this, you can safely ignore this email.`,
-    html: `<p>We received a request to reset your Zineedo password. This link expires in 30 minutes:</p><p><a href="${resetLink}">${resetLink}</a></p><p>If you didn't request this, you can safely ignore this email.</p>`,
-  }).catch((err) => {
-    console.error('[email] failed to send password reset email:', err.message);
-  });
+  sendTransactionalEmail(
+    toEmail,
+    'Reset your Zineedo password',
+    `We received a request to reset your Zineedo password. This link expires in 30 minutes:\n\n${resetLink}\n\nIf you didn't request this, you can safely ignore this email.`,
+    `<p>We received a request to reset your Zineedo password. This link expires in 30 minutes:</p><p><a href="${resetLink}">${resetLink}</a></p><p>If you didn't request this, you can safely ignore this email.</p>`
+  );
 }
 
 function sessionCookieOptions() {
