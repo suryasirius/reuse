@@ -16,7 +16,15 @@
   --radius-sm:8px; --radius-md:12px; --radius-lg:18px; --radius-full:999px;
   --ease:cubic-bezier(.2,.7,.3,1);
   --font-body:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;
-  --font-display:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;
+  /* Previously identical to --font-body (plain Inter for both), which left headings with zero
+     typographic contrast against body text — one of the two concrete reasons the site read as
+     "dull" in review. Plus Jakarta Sans is a distinct but still-clean geometric sans, used for
+     headings only; body copy stays on Inter for readability. Falls back to the same stack as
+     --font-body if the Google Fonts request is ever slow/blocked. */
+  --font-display:'Plus Jakarta Sans','Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;
+  /* CTA green: a touch brighter/more saturated than --brand, used only for primary buttons so the
+     main call-to-action pops slightly more than the rest of the green-on-white UI. */
+  --brand-cta:#1BA058;
 }
 *{box-sizing:border-box}
 html{-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
@@ -137,11 +145,14 @@ header .logo{
 .capsule-actions{display:flex;align-items:center;gap:16px}
 .capsule-actions .primary-btn{
   margin-top:0;height:46px;padding:0 24px;border-radius:12px;
-  background:var(--brand);color:#fff;box-shadow:0 4px 14px rgba(23,138,75,.3);
+  /* --brand-cta: a touch brighter/more saturated than the base --brand green, used only on this
+     top-of-page CTA (the single most-clicked button on the site) so it reads as slightly more
+     "alive" than the rest of the green-on-white UI, without changing the brand green everywhere. */
+  background:var(--brand-cta);color:#fff;box-shadow:0 4px 14px rgba(27,160,88,.32);
   display:inline-flex;align-items:center;gap:8px;font-size:14.5px;font-weight:800;letter-spacing:-.005em;
 }
 .capsule-actions .primary-btn{transition:transform .15s var(--ease), box-shadow .15s var(--ease), background .15s}
-.capsule-actions .primary-btn:hover{transform:translateY(-1px) scale(1.03);background:#2CA56A;box-shadow:0 10px 26px rgba(23,138,75,.4);filter:none}
+.capsule-actions .primary-btn:hover{transform:translateY(-1px) scale(1.03);background:#1FB567;box-shadow:0 10px 26px rgba(27,160,88,.42);filter:none}
 .capsule-actions .primary-btn [data-lucide]{width:17px;height:17px}
 header nav{display:flex;gap:14px;align-items:center;flex-wrap:wrap}
 header nav button, header nav a.btn{
@@ -585,7 +596,7 @@ main{max-width:1800px;width:calc(100vw - 64px);margin:0 auto;padding:14px 12px 6
   transition:all .15s var(--ease);
 }
 .section-tab:hover{border-color:var(--brand);color:var(--brand-dark);background:var(--brand-softer)}
-.section-tab.active{background:var(--brand);color:#fff;border-color:var(--brand);box-shadow:var(--glow-brand)}
+.section-tab.active{background:var(--brand-cta);color:#fff;border-color:var(--brand-cta);box-shadow:0 4px 18px rgba(27,160,88,.3)}
 .section-hint{font-size:13.5px;color:var(--muted);margin:0 0 16px;max-width:70ch}
 
 .req-type-tabs{display:flex;align-items:center;gap:8px;margin-bottom:16px;flex-wrap:wrap}
@@ -941,7 +952,11 @@ main{max-width:1800px;width:calc(100vw - 64px);margin:0 auto;padding:14px 12px 6
 .business-teaser-art svg{width:100%;height:100%;display:block}
 @media (max-width:900px){.business-teaser-art{display:none}}
 .business-teaser h2{margin:0 0 6px;font-size:20px;font-weight:700;display:flex;align-items:center;gap:8px}
-.business-teaser h2 .section-icon{color:#fff}
+/* Override the new light-section lime icon chip here — this banner is already a dark panel full of
+   lime accents (the btn-light CTA below), so repeating lime again on the icon would be redundant;
+   use the same translucent-white treatment already established for icons on dark panels elsewhere
+   (eco panel, impact tab) instead, for a consistent "icon-on-dark-panel" look across the site. */
+.business-teaser h2 .section-icon{background:rgba(255,255,255,.18);color:#fff}
 .business-teaser p{margin:0;color:rgba(255,255,255,.8);font-size:13.5px;max-width:50ch}
 .business-teaser .btn-light{background:var(--pop);color:var(--pop-ink);border:none;padding:12px 22px;border-radius:14px;font-weight:800;font-size:13.5px;cursor:pointer;white-space:nowrap;transition:transform .15s var(--ease)}
 .business-teaser .btn-light:hover{transform:translateY(-1px) scale(1.03)}
@@ -957,8 +972,15 @@ main{max-width:1800px;width:calc(100vw - 64px);margin:0 auto;padding:14px 12px 6
 .collection-mini-grid .mini-thumb img{width:100%;height:100%;object-fit:cover}
 /* Shared icon treatment for section headings (Trending/People/Services/Champions/Collections/
    Business Surplus) — one icon family (Lucide), one size, one stroke, one color, replacing the
-   mix of emoji that previously gave each heading a different visual language. */
-.section-icon{width:19px;height:19px;color:var(--brand);flex-shrink:0}
+   mix of emoji that previously gave each heading a different visual language.
+   The lime chip behind the icon brings the --pop accent (previously confined to the dark hero
+   panel and a couple of other dark-background sections) into every light section heading on the
+   page, as a decorative background fill rather than text color — safe on contrast since nothing
+   reads the lime directly, only the dark-green icon sitting on top of it. */
+.section-icon{
+  width:28px;height:28px;padding:5px;color:var(--brand-dark);flex-shrink:0;
+  background:var(--pop);border-radius:9px;box-sizing:border-box;
+}
 .trending-wrap h2{font-size:20px;margin:0 0 4px;display:flex;align-items:center;gap:8px;font-weight:700;color:var(--text)}
 .trending-wrap .highlight-sub{font-size:13px;margin:0 0 10px}
 /* 6 solid cards, not 8 cramped ones — fixed 6-column grid at desktop widths so a full homepage
