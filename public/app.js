@@ -2775,12 +2775,96 @@ function bindCopyButtons(root) {
 }
 
 // ---------- item detail ----------
-async function openDetail(id) {
+// Status panel shown instead of the claim form when the current user already has a pending/accepted
+// claim on this exact item — "make the resulting claim/request status visible" without inventing a
+// new status system: it just surfaces what /api/my/claims-sent (already used by the Activity page)
+// already knows, right where the user is about to act again.
+function claimStatusPanelHtml(claim, isFoodRescue) {
+  const verb = isFoodRescue ? 'offer to help' : 'request';
+  if (claim.status === 'accepted') {
+    return `<div class="claim-status-panel accepted">
+      <strong>✓ Your ${verb} was accepted!</strong>
+      <p>Coordinate pickup with the owner from your Activity page.</p>
+      <button type="button" class="ghost" id="claimStatusViewActivity">View in Activity →</button>
+    </div>`;
+  }
+  return `<div class="claim-status-panel pending">
+    <strong>⏳ You already sent a ${verb} for this listing</strong>
+    <p>Waiting for the owner to respond — you'll be notified when they do.</p>
+    <button type="button" class="ghost" id="claimStatusViewActivity">View in Activity →</button>
+  </div>`;
+}
+
+// Confirmation step between "Request this item" / "I can help" and the actual API call — shows
+// exactly what's being requested (thumbnail, title, price/urgent state, the typed message) so
+// nothing is submitted by accident, then performs the real POST /api/items/:id/claim call (same
+// endpoint/payload the old direct-submit used) with its own disabled/loading state so a double
+// click can't fire two requests, and surfaces any server error (stale "no longer available",
+// network failure, etc.) inline instead of a dead end.
+function openClaimConfirmModal(item, message, isFoodRescue) {
+  const actionLabel = isFoodRescue ? 'I can help' : item.price_type === 'paid' ? 'Request to buy' : item.price_type === 'exchange' ? 'Propose exchange' : item.price_type === 'rent' ? 'Request to rent' : 'Request this item';
+  showModal(`
+    <h2>${isFoodRescue ? '🍱 Confirm — I can help' : 'Confirm your request'}</h2>
+    <div class="claim-confirm-item">
+      <div class="claim-confirm-thumb">${thumbInnerHtml(item)}</div>
+      <div class="claim-confirm-info">
+        <strong>${escapeHtml(item.title)}</strong>
+        <div class="hint">${itemPriceLabel(item)}${item.is_urgent ? ' · 🔥 Urgent' : ''}</div>
+      </div>
+    </div>
+    ${isFoodRescue && item.is_urgent ? `<div class="emergency-note" style="background:#FFF4EF;border-color:#FBD9C6;color:#A23B12">🔥 This is marked urgent — please only confirm if you can collect it in time.</div>` : ''}
+    <div class="hint" style="margin-top:10px">${message ? `Your message: "${escapeHtml(message)}"` : 'No message added.'}</div>
+    <div class="error" id="claimConfirmError"></div>
+    <div class="post-form-actions" style="margin-top:16px">
+      <button type="button" class="ghost" id="claimConfirmBack">← Back</button>
+      <button type="button" class="primary-btn" id="claimConfirmSubmit">${actionLabel}</button>
+    </div>
+  `, 'detail-modal');
+  $('#claimConfirmBack').onclick = () => openDetail(item.id, message);
+  const submitBtn = $('#claimConfirmSubmit');
+  submitBtn.onclick = async () => {
+    // Guards accidental double-submit (double-click, double-tap) — once disabled, repeat clicks
+    // while the first request is still in flight are simply ignored rather than firing again.
+    if (submitBtn.disabled) return;
+    submitBtn.disabled = true;
+    const original = submitBtn.textContent;
+    submitBtn.textContent = 'Sending…';
+    try {
+      await api(`/api/items/${item.id}/claim`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ message }) });
+      closeModal();
+      showToast(isFoodRescue ? 'Your offer to help was sent!' : 'Request sent to the owner!', 'success');
+      loadTrending();
+    } catch (err) {
+      // Covers both a real server rejection (e.g. the item moved to claimed/closed in the time this
+      // modal was open — the exact same "This item is no longer available" message the API already
+      // returns) and a network failure (api() throws there too) — either way, the message typed in
+      // survives (still held in this closure) and the button re-enables so the user can retry.
+      $('#claimConfirmError').textContent = err.message || 'Something went wrong. Please check your connection and try again.';
+      submitBtn.disabled = false;
+      submitBtn.textContent = original;
+    }
+  };
+}
+
+async function openDetail(id, prefillMessage) {
   const item = await api('/api/items/' + id);
   const isOwner = state.user && state.user.id === item.user_id;
   const isFoodRescue = FOOD_CATEGORIES_FRONT.includes(item.category);
   const unavailable = item.status !== 'available';
   const liked = state.wishlist.has(item.id);
+  // Claim-flow improvement: a non-owner who already has a pending/accepted claim on THIS item gets
+  // a status panel instead of another claim form — reuses the existing /api/my/claims-sent endpoint
+  // (no new API, no schema change) purely as a read to decide what to render. A previously *declined*
+  // claim does not block a new attempt (the backend itself never blocked this — item.status stays
+  // 'available' after a decline — so this is a UI convenience, not a new restriction).
+  let myClaim = null;
+  if (!isOwner && state.user && !unavailable) {
+    try {
+      const claims = await api('/api/my/claims-sent');
+      const mine = claims.filter(c => c.item_id === item.id);
+      myClaim = mine.find(c => c.status === 'pending') || mine.find(c => c.status === 'accepted') || null;
+    } catch { /* non-critical — if this read fails, just fall back to showing the normal form */ }
+  }
   showModal(`
     ${detailGalleryHtml(item)}
     <div class="detail-status-row">
@@ -2827,14 +2911,15 @@ async function openDetail(id) {
         <button class="primary-btn" id="closeItemBtn" style="background:#c0392b">Mark as given away / closed</button>
       </div>
     ` : `
-      ${!unavailable ? `
+      ${unavailable ? `<div class="detail-unavailable-note">${item.status === 'claimed' ? '🤝 This item has already been claimed by someone else.' : '🚫 This item is no longer available.'}</div>`
+        : myClaim ? claimStatusPanelHtml(myClaim, isFoodRescue) : `
         <form id="claimForm">
           <label>Message to owner (optional)</label>
-          <textarea name="message" placeholder="e.g. I'd like to pick this up tomorrow"></textarea>
+          <textarea name="message" placeholder="e.g. I'd like to pick this up tomorrow">${escapeHtml(prefillMessage || '')}</textarea>
           <div class="error" id="claimError"></div>
           <button class="primary-btn" type="submit">${isFoodRescue ? 'I can help' : item.price_type === 'paid' ? 'Request to buy' : item.price_type === 'exchange' ? 'Propose exchange' : item.price_type === 'rent' ? 'Request to rent' : 'Request this item'}</button>
         </form>
-      ` : `<div class="detail-unavailable-note">${item.status === 'claimed' ? '🤝 This item has already been claimed by someone else.' : '🚫 This item is no longer available.'}</div>`}
+      `}
       ${state.user ? `<p style="margin-top:10px"><a href="#" id="reportLink" style="color:#c0392b;font-size:12px">Report this post</a></p>` : ''}
     `}
   `, 'detail-modal');
@@ -2847,18 +2932,18 @@ async function openDetail(id) {
   } else {
     const claimForm = $('#claimForm');
     if (claimForm) {
-      claimForm.onsubmit = async (e) => {
+      // Submitting the form no longer calls the API directly — it opens a confirmation step first
+      // (openClaimConfirmModal) showing exactly what's being requested, with the actual API call
+      // (and its loading/duplicate-submit/error handling) happening only once the user confirms.
+      claimForm.onsubmit = (e) => {
         e.preventDefault();
         if (!state.user) { closeModal(); openAuthModal('login'); return; }
         const fd = Object.fromEntries(new FormData(e.target));
-        try {
-          await api(`/api/items/${item.id}/claim`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(fd) });
-          closeModal();
-          alert('Request sent to the owner!');
-          loadTrending();
-        } catch (err) { $('#claimError').textContent = err.message; }
+        openClaimConfirmModal(item, fd.message || '', isFoodRescue);
       };
     }
+    const viewActivityBtn = $('#claimStatusViewActivity');
+    if (viewActivityBtn) viewActivityBtn.onclick = () => { closeModal(); openActivity('tabItemsSent'); };
     const reportLink = $('#reportLink');
     if (reportLink) reportLink.onclick = (e) => { e.preventDefault(); openReportModal('item', item.id); };
   }

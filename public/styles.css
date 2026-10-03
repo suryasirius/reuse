@@ -1836,6 +1836,21 @@ html,body{overflow-x:hidden;max-width:100%}
   .detail-actions{flex-direction:column}
 }
 
+/* ---------- claim/request confirmation step + status panel (presentation + flow only — see
+   openClaimConfirmModal()/claimStatusPanelHtml() in app.js; no API/schema change) ---------- */
+.claim-confirm-item{display:flex;align-items:center;gap:12px;margin-top:12px;padding:10px;background:var(--brand-softer);border:1px solid var(--border-soft);border-radius:var(--radius-md)}
+.claim-confirm-thumb{width:56px;height:56px;border-radius:var(--radius-sm);overflow:hidden;flex-shrink:0;background:#eef1ec;display:flex;align-items:center;justify-content:center;font-size:22px}
+.claim-confirm-thumb img, .claim-confirm-thumb video{width:100%;height:100%;object-fit:cover}
+.claim-confirm-info strong{font-size:14px}
+
+.claim-status-panel{border-radius:var(--radius-md);padding:14px 16px;margin-top:4px}
+.claim-status-panel strong{display:block;font-size:14px;margin-bottom:4px}
+.claim-status-panel p{margin:0 0 10px;font-size:12.5px;line-height:1.5}
+.claim-status-panel.pending{background:#FFF8E6;border:1px solid #F3DFA0;color:#8a6d00}
+.claim-status-panel.accepted{background:var(--brand-light);border:1px solid var(--border-soft);color:var(--brand-dark)}
+.claim-status-panel .ghost{background:#fff;border:1px solid var(--border);color:var(--text);padding:9px 16px;border-radius:var(--radius-sm);font-weight:700;cursor:pointer;font-size:13px}
+.claim-status-panel .ghost:hover{border-color:var(--text)}
+
 /* ---------- two-sided completion confirmation ---------- */
 .confirm-block{margin-top:10px}
 .confirm-block .actions{display:flex;gap:8px;margin-top:6px}
