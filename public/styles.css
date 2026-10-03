@@ -1020,27 +1020,38 @@ main{max-width:1800px;width:calc(100vw - 64px);margin:0 auto;padding:14px 12px 6
 
 .section-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
 .section-head h2{font-size:20px;margin:0;font-weight:700}
-/* BUG FIX: minmax(280px,1fr) under auto-fit means each card's upper bound is "however much space
-   is left to divide up" — fine with 4+ cards filling a row, but with only one or two real
-   collections (the common case: home-highlights groups are frequently empty, so often only
-   Furniture/Electronics actually have items), the 1fr upper bound let a single card stretch across
-   the *entire* row width, producing the "huge empty panel" look reported — the card grew far past
-   its content's natural size while the content itself (a 3-thumbnail row) didn't grow to match,
-   leaving dead white space. Capping the upper bound at 340px keeps every card a consistent,
-   intentional-looking size regardless of how many collections currently qualify; extra row width
-   with few cards is now left as margin instead of stretching a card into an empty-looking slab.
-   justify-content:start (grid's default is stretch) is what actually lets that leftover space sit
-   unused at the row's end instead of being redistributed back into the capped tracks. */
-.collections-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,340px));justify-content:start;gap:16px}
-.collection-card{background:#fff;border:1px solid var(--border-soft);border-radius:20px;padding:16px;box-shadow:none}
-.collection-card .collection-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
-.collection-card h3{margin:0;font-size:15px;font-weight:600}
-/* grid-template-columns is now set inline per-card (see loadCollections() in app.js) to the real
-   item count (1, 2, or 3) instead of being hardcoded to 3 here — this rule is just the shared
-   sizing/spacing every mini-grid uses regardless of how many columns it ends up with. */
-.collection-mini-grid{display:grid;gap:8px}
-.collection-mini-grid .mini-thumb{aspect-ratio:1;border-radius:12px;background:linear-gradient(135deg,#eef6f0,#f4f8f5);display:flex;align-items:center;justify-content:center;font-size:26px;overflow:hidden;cursor:pointer}
+/* REDESIGN: the previous fix (capping minmax at a max-width) still looked wrong because the
+   number of *cards* varied day to day (only populated groups rendered), so the grid's row length
+   kept changing and a thin row of 1-2 cards still read as "mostly empty". Fixed here at the root:
+   loadCollections() in app.js now always renders a fixed set of 8 real categories, so the grid
+   itself can be a plain fixed layout (4 compact columns, wrapping to a second row of 4) — no
+   auto-fit/minmax stretching needed, because there's no longer a variable card count to stretch
+   around. Every card is the same small, intentional size whether its category has 40 items or 0. */
+.collections-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px}
+.collection-card{background:#fff;border:1px solid var(--border-soft);border-radius:18px;padding:14px;box-shadow:none;display:flex;flex-direction:column;gap:10px}
+.collection-card.is-empty{opacity:.75}
+.collection-card-top{display:flex;align-items:flex-start;gap:10px}
+.collection-card-icon{font-size:22px;line-height:1;flex-shrink:0}
+.collection-card h3{margin:0;font-size:14px;font-weight:700;line-height:1.25}
+.collection-card-desc{margin:2px 0 0;font-size:11.5px;color:var(--muted);line-height:1.3;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.collection-mini-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+.collection-mini-grid .mini-thumb{position:relative;aspect-ratio:1;border-radius:10px;background:linear-gradient(135deg,#eef6f0,#f4f8f5);display:flex;align-items:center;justify-content:center;font-size:20px;overflow:hidden;cursor:pointer}
 .collection-mini-grid .mini-thumb img{width:100%;height:100%;object-fit:cover}
+.collection-mini-grid .mini-thumb-empty{cursor:default;opacity:.55}
+/* Same color language as the main listing cards' price badge (var(--brand)=Free, --orange=Paid,
+   --blue=Rent, purple=Exchange, --danger=Urgent) — just shrunk to fit a ~70px thumbnail. */
+.mini-thumb-badge{position:absolute;bottom:3px;left:3px;right:3px;font-size:8.5px;font-weight:800;color:#fff;text-align:center;padding:2px 3px;border-radius:5px;line-height:1.1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-transform:uppercase;letter-spacing:.2px}
+.mini-thumb-badge.free{background:var(--brand)}
+.mini-thumb-badge.paid{background:var(--orange)}
+.mini-thumb-badge.rent{background:var(--blue)}
+.mini-thumb-badge.exchange{background:#6A4FC7}
+.mini-thumb-badge.claimed{background:var(--muted)}
+.mini-thumb-badge.urgent{background:var(--danger)}
+.collection-card-foot{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:auto}
+.collection-count{font-size:11px;color:var(--muted);font-weight:600;white-space:nowrap}
+.collection-card-foot .view-all-link{font-size:11.5px}
+@media (max-width:900px){.collections-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media (max-width:480px){.collections-grid{grid-template-columns:1fr}.collection-card{flex-direction:column}}
 /* Shared icon treatment for section headings (Trending/People/Services/Champions/Collections/
    Business Surplus) — one icon family (Lucide), one size, one stroke, one color, replacing the
    mix of emoji that previously gave each heading a different visual language.

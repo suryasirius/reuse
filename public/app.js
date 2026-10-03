@@ -581,44 +581,84 @@ function openUrgentAllModal(items) {
 
 // Compact "Popular Collections" — replaces the old full-height Construction/Educational grids with small
 // 3-item previews + "View all" (which just applies the category filter), keeping the homepage short.
+// REDESIGN (previous attempt still looked broken per user feedback): the old version built one
+// card per *populated* group (home-highlights groups, which are frequently all-empty, plus a
+// couple of hardcoded categories) — so on a day with little inventory it could render just one or
+// two cards, and no amount of CSS sizing on those few cards looked intentional. The fix here is
+// structural, not cosmetic: always render the same fixed set of 8 real marketplace categories
+// (every card exists every time, same size, same shape), and let each card's *content* — thumbs,
+// real item count — reflect whatever data actually exists, down to zero. A uniform grid of known
+// cards can never produce the old "giant empty panel" because no card's size ever depends on how
+// much data it has.
+// Short descriptions below are static UI copy (what the category is for), not data — exactly like
+// a nav label — so they don't violate "use real data only"; the thumbnails and item counts next to
+// them are 100% live from /api/items.
+const COLLECTION_CATEGORIES = [
+  { cat: 'Furniture', icon: '🛋️', desc: 'Sofas, tables, chairs & more' },
+  { cat: 'Food (Surplus)', icon: '🍱', desc: 'Share extra food before it goes to waste' },
+  { cat: 'Electronics & Phones', icon: '📱', desc: 'Phones, gadgets & accessories' },
+  { cat: 'Vehicles', icon: '🚲', desc: 'Bikes, cars & spare parts' },
+  { cat: 'Baby & Kids', icon: '🧸', desc: "Toys, gear & kids' essentials" },
+  { cat: 'Kitchen & Appliances', icon: '🍳', desc: 'Cookware, appliances & more' },
+  { cat: 'Clothing & Accessories', icon: '👕', desc: 'Clothes, shoes & accessories' },
+  { cat: 'Books & Media', icon: '📚', desc: 'Books, games & media' }
+];
+
 async function loadCollections() {
   const el = $('#collectionsSection');
   if (!el) return;
   if (state.section !== 'consumer') { el.innerHTML = ''; return; }
   try {
-    const [highlightGroups, furniture, electronics] = await Promise.all([
-      api('/api/home-highlights'),
-      api('/api/items?listing_type=consumer&category=' + encodeURIComponent('Furniture')),
-      api('/api/items?listing_type=consumer&category=' + encodeURIComponent('Electronics & Phones'))
-    ]);
-    const groups = [
-      ...highlightGroups.map(g => ({ icon: g.icon, label: g.label, items: g.items })),
-      { icon: '🛋️', label: 'Furniture', items: furniture },
-      { icon: '📱', label: 'Electronics & Phones', items: electronics }
-    ];
-    const cards = groups.map(g => {
-      const groupItems = g.items.slice(0, 3);
-      if (!groupItems.length) return '';
-      // BUG FIX (see .collections-grid/.collection-mini-grid in styles.css for the matching CSS
-      // half of this fix): .collection-mini-grid was always a fixed 3-column grid regardless of
-      // how many items a collection actually has. With fewer than 3 (1 or 2 — the common case for
-      // a newer/thinner category), the unused columns rendered as visible dead empty cells instead
-      // of not existing at all. Sizing the grid to the real item count removes that dead space.
-      return `<div class="collection-card">
-        <div class="collection-head"><h3>${g.icon} ${escapeHtml(g.label)}</h3><button class="view-all-link" data-cat="${escapeHtml(groupItems[0].category)}">View all →</button></div>
-        <div class="collection-mini-grid" style="grid-template-columns:repeat(${groupItems.length},1fr)">${groupItems.map(i => `<div class="mini-thumb" data-id="${i.id}">${thumbInnerHtml(i)}</div>`).join('')}</div>
+    // One request per category, each already scoped+paginated server-side (limit=3 → first 3
+    // real items for the thumbnails; `total` → the exact real count, not an estimate).
+    const results = await Promise.all(COLLECTION_CATEGORIES.map(c =>
+      api('/api/items?listing_type=consumer&limit=3&category=' + encodeURIComponent(c.cat))
+    ));
+    const cards = COLLECTION_CATEGORIES.map((c, idx) => {
+      const r = results[idx] || {};
+      const items = r.items || [];
+      const total = typeof r.total === 'number' ? r.total : items.length;
+      // Always exactly 3 thumb slots so every card is the same shape — a category with fewer than
+      // 3 (or 0) real items fills the remainder with the same muted empty-box state used elsewhere
+      // on the site (thumbInnerHtml's own no-photo fallback), never a blank/missing cell.
+      // Tiny price/urgent chip on each real thumb, reusing the same color-coded classes/labels as
+      // every other card on the site (itemPriceLabel/itemPriceBadgeClass) — Urgent takes visual
+      // priority over the price chip exactly like it does on the main listing cards.
+      const slots = [0, 1, 2].map(i => items[i]
+        ? `<div class="mini-thumb" data-id="${items[i].id}">${thumbInnerHtml(items[i])}<span class="mini-thumb-badge ${items[i].is_urgent ? 'urgent' : itemPriceBadgeClass(items[i])}">${items[i].is_urgent ? 'Urgent' : itemPriceLabel(items[i])}</span></div>`
+        : `<div class="mini-thumb mini-thumb-empty"><span class="thumb-emoji">${c.icon}</span></div>`);
+      const countLabel = total === 0 ? 'No items yet' : `${total} item${total === 1 ? '' : 's'}`;
+      return `<div class="collection-card${total === 0 ? ' is-empty' : ''}">
+        <div class="collection-card-top">
+          <span class="collection-card-icon">${c.icon}</span>
+          <div>
+            <h3>${escapeHtml(c.cat)}</h3>
+            <p class="collection-card-desc">${escapeHtml(c.desc)}</p>
+          </div>
+        </div>
+        <div class="collection-mini-grid">${slots.join('')}</div>
+        <div class="collection-card-foot">
+          <span class="collection-count">${countLabel}</span>
+          <button class="view-all-link" data-cat="${escapeHtml(c.cat)}">View collection →</button>
+        </div>
       </div>`;
-    }).filter(Boolean).join('');
-    if (!cards) { el.innerHTML = ''; return; }
-    el.innerHTML = `<div class="section-head"><h2><i data-lucide="gift" class="section-icon"></i> Popular collections</h2></div><div class="collections-grid">${cards}</div>`;
+    }).join('');
+    el.innerHTML = `<div class="section-head"><h2><i data-lucide="gift" class="section-icon"></i> Popular collections</h2><button class="view-all-link" id="collectionsViewAll">View all collections →</button></div><div class="collections-grid">${cards}</div>`;
     if (window.lucide) lucide.createIcons();
-    el.querySelectorAll('.mini-thumb').forEach(t => t.onclick = () => openDetail(t.dataset.id));
+    el.querySelectorAll('.mini-thumb[data-id]').forEach(t => t.onclick = () => openDetail(t.dataset.id));
     el.querySelectorAll('[data-cat]').forEach(btn => btn.onclick = () => {
       state.category = btn.dataset.cat;
       renderCategories();
       loadItems();
       document.querySelector('#content').scrollIntoView({ behavior: 'smooth', block: 'start' });
     });
+    const viewAllBtn = $('#collectionsViewAll');
+    if (viewAllBtn) viewAllBtn.onclick = () => {
+      state.category = '';
+      renderCategories();
+      loadItems();
+      document.querySelector('#content').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    };
   } catch (e) { /* non-critical */ }
 }
 
