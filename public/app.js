@@ -599,9 +599,14 @@ async function loadCollections() {
     const cards = groups.map(g => {
       const groupItems = g.items.slice(0, 3);
       if (!groupItems.length) return '';
+      // BUG FIX (see .collections-grid/.collection-mini-grid in styles.css for the matching CSS
+      // half of this fix): .collection-mini-grid was always a fixed 3-column grid regardless of
+      // how many items a collection actually has. With fewer than 3 (1 or 2 — the common case for
+      // a newer/thinner category), the unused columns rendered as visible dead empty cells instead
+      // of not existing at all. Sizing the grid to the real item count removes that dead space.
       return `<div class="collection-card">
         <div class="collection-head"><h3>${g.icon} ${escapeHtml(g.label)}</h3><button class="view-all-link" data-cat="${escapeHtml(groupItems[0].category)}">View all →</button></div>
-        <div class="collection-mini-grid">${groupItems.map(i => `<div class="mini-thumb" data-id="${i.id}">${thumbInnerHtml(i)}</div>`).join('')}</div>
+        <div class="collection-mini-grid" style="grid-template-columns:repeat(${groupItems.length},1fr)">${groupItems.map(i => `<div class="mini-thumb" data-id="${i.id}">${thumbInnerHtml(i)}</div>`).join('')}</div>
       </div>`;
     }).filter(Boolean).join('');
     if (!cards) { el.innerHTML = ''; return; }

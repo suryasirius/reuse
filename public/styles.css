@@ -1020,11 +1020,25 @@ main{max-width:1800px;width:calc(100vw - 64px);margin:0 auto;padding:14px 12px 6
 
 .section-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
 .section-head h2{font-size:20px;margin:0;font-weight:700}
-.collections-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px}
+/* BUG FIX: minmax(280px,1fr) under auto-fit means each card's upper bound is "however much space
+   is left to divide up" — fine with 4+ cards filling a row, but with only one or two real
+   collections (the common case: home-highlights groups are frequently empty, so often only
+   Furniture/Electronics actually have items), the 1fr upper bound let a single card stretch across
+   the *entire* row width, producing the "huge empty panel" look reported — the card grew far past
+   its content's natural size while the content itself (a 3-thumbnail row) didn't grow to match,
+   leaving dead white space. Capping the upper bound at 340px keeps every card a consistent,
+   intentional-looking size regardless of how many collections currently qualify; extra row width
+   with few cards is now left as margin instead of stretching a card into an empty-looking slab.
+   justify-content:start (grid's default is stretch) is what actually lets that leftover space sit
+   unused at the row's end instead of being redistributed back into the capped tracks. */
+.collections-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,340px));justify-content:start;gap:16px}
 .collection-card{background:#fff;border:1px solid var(--border-soft);border-radius:20px;padding:16px;box-shadow:none}
 .collection-card .collection-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
 .collection-card h3{margin:0;font-size:15px;font-weight:600}
-.collection-mini-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+/* grid-template-columns is now set inline per-card (see loadCollections() in app.js) to the real
+   item count (1, 2, or 3) instead of being hardcoded to 3 here — this rule is just the shared
+   sizing/spacing every mini-grid uses regardless of how many columns it ends up with. */
+.collection-mini-grid{display:grid;gap:8px}
 .collection-mini-grid .mini-thumb{aspect-ratio:1;border-radius:12px;background:linear-gradient(135deg,#eef6f0,#f4f8f5);display:flex;align-items:center;justify-content:center;font-size:26px;overflow:hidden;cursor:pointer}
 .collection-mini-grid .mini-thumb img{width:100%;height:100%;object-fit:cover}
 /* Shared icon treatment for section headings (Trending/People/Services/Champions/Collections/
