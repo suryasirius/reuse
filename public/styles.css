@@ -1766,6 +1766,76 @@ html,body{overflow-x:hidden;max-width:100%}
 }
 .share-btn:hover{background:var(--brand-softer)}
 
+/* ---------- listing detail page redesign (presentation only — see openDetail() in app.js) ----------
+   Wider modal so the larger gallery and two-line meta row have room to breathe; everything else on
+   this page still uses the same tokens (--brand, --radius-*, --shadow-xs, .hint, .primary-btn,
+   .badge, .owner-badge, .verified-badge, .pickup-badge) as the rest of the site. */
+.modal.detail-modal{max-width:640px}
+.detail-gallery{margin-bottom:4px}
+.detail-gallery-hero{
+  width:100%;height:320px;border-radius:var(--radius-md);overflow:hidden;background:#eef1ec;
+  display:flex;align-items:center;justify-content:center;
+}
+.detail-gallery-hero img, .detail-gallery-hero video{width:100%;height:100%;object-fit:cover;display:block}
+.detail-gallery-empty{flex-direction:column;gap:6px;color:var(--muted);font-size:13px;font-weight:600;text-align:center;padding:16px}
+.detail-gallery-empty .thumb-emoji{font-size:40px;line-height:1}
+.detail-gallery-empty p{margin:0}
+.detail-gallery-thumbs{display:flex;gap:8px;overflow-x:auto;margin-top:8px;padding-bottom:2px}
+.detail-gallery-thumb{
+  flex-shrink:0;width:58px;height:58px;border-radius:var(--radius-sm);overflow:hidden;padding:0;
+  border:2px solid transparent;opacity:.6;cursor:pointer;background:none;transition:opacity .15s,border-color .15s;
+}
+.detail-gallery-thumb img, .detail-gallery-thumb video{width:100%;height:100%;object-fit:cover;display:block}
+.detail-gallery-thumb:hover{opacity:.85}
+.detail-gallery-thumb.active{opacity:1;border-color:var(--brand)}
+
+.detail-status-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:14px}
+.detail-price-badge{font-size:14px;font-weight:800;color:#fff;padding:6px 14px;border-radius:var(--radius-full);line-height:1.3}
+.detail-price-badge.free{background:var(--brand)}
+.detail-price-badge.paid{background:var(--orange)}
+.detail-price-badge.rent{background:var(--blue)}
+.detail-price-badge.exchange{background:#6A4FC7}
+.detail-price-badge.claimed{background:var(--muted)}
+.detail-urgent-badge{background:var(--danger);color:#fff;font-size:12px;font-weight:700;padding:5px 12px;border-radius:var(--radius-full)}
+.detail-availability{display:inline-flex;align-items:center;gap:4px;font-size:12px;font-weight:700;padding:5px 12px;border-radius:var(--radius-full)}
+.detail-availability [data-lucide]{width:13px;height:13px}
+.detail-availability.available{background:var(--brand-light);color:var(--brand-dark)}
+.detail-availability.claimed{background:#FFF3E0;color:#B45F06}
+.detail-availability.closed{background:#EEF0ED;color:var(--muted)}
+
+.detail-title-row{margin-top:10px}
+.detail-title-actions{display:flex;align-items:center;gap:6px;flex-shrink:0}
+.detail-wishlist-btn{
+  position:static;width:34px;height:34px;border-radius:50%;border:1px solid var(--border);background:#fff;
+  display:flex;align-items:center;justify-content:center;cursor:pointer;transition:transform .12s;flex-shrink:0;
+}
+.detail-wishlist-btn svg{width:16px;height:16px;stroke:#1B1F23;fill:none;transition:fill .15s,stroke .15s}
+.detail-wishlist-btn.active svg{fill:#f43f5e;stroke:#f43f5e}
+.detail-wishlist-btn:hover{transform:scale(1.08)}
+
+.detail-meta-row{display:flex;flex-wrap:wrap;gap:6px;font-size:12.5px;color:var(--muted);margin-top:6px;font-weight:600}
+
+.detail-food-panel{background:#FFF4EF;border:1px solid #FBD9C6;border-radius:var(--radius-md);padding:12px 14px;margin:12px 0}
+.detail-food-panel-head{display:flex;align-items:center;gap:6px;font-size:13px;color:#A23B12;font-weight:800}
+.detail-food-urgent{background:var(--danger);color:#fff;font-size:10px;font-weight:800;padding:2px 8px;border-radius:var(--radius-full);margin-left:2px}
+.detail-food-meta{display:flex;flex-wrap:wrap;gap:12px;margin-top:8px;font-size:12.5px;color:#7A3E22;font-weight:600}
+.detail-food-meta span{display:inline-flex;align-items:center;gap:4px}
+
+.detail-section{margin-top:14px}
+.detail-section-title{margin:0 0 4px;font-size:13px;font-weight:800;color:var(--text)}
+.detail-description{margin:0;font-size:14px;line-height:1.6;color:var(--text);white-space:pre-wrap}
+
+.detail-unavailable-note{background:#EEF0ED;color:var(--muted);font-weight:700;font-size:13px;padding:12px 14px;border-radius:var(--radius-md);margin-top:14px}
+.detail-actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px}
+.detail-actions .primary-btn{flex:1 1 auto}
+
+@media (max-width:480px){
+  .modal.detail-modal{max-width:100%}
+  .detail-gallery-hero{height:220px}
+  .detail-status-row{gap:6px}
+  .detail-actions{flex-direction:column}
+}
+
 /* ---------- two-sided completion confirmation ---------- */
 .confirm-block{margin-top:10px}
 .confirm-block .actions{display:flex;gap:8px;margin-top:6px}

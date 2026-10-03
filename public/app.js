@@ -142,8 +142,8 @@ function openLightbox(images, startIndex) {
   document.addEventListener('keydown', lightboxKeyHandler);
 }
 
-function showModal(html) {
-  modalRoot.innerHTML = `<div class="modal-overlay" id="overlay"><div class="modal">
+function showModal(html, extraClass) {
+  modalRoot.innerHTML = `<div class="modal-overlay" id="overlay"><div class="modal${extraClass ? ' ' + extraClass : ''}">
     <button class="close" id="closeModal" aria-label="Close">&times;</button>${html}</div></div>`;
   $('#closeModal').onclick = closeModal;
   $('#overlay').onclick = (e) => { if (e.target.id === 'overlay') closeModal(); };
@@ -1997,6 +1997,55 @@ function galleryHtml(item) {
     : `<img src="${m.url}">`).join('')}</div>`;
 }
 
+// REDESIGN (listing detail page presentation overhaul — see openDetail()): large hero image +
+// below-hero thumbnail strip for multi-photo listings, replacing the old equal-size horizontal
+// scroll strip. Kept as a separate function from galleryHtml() above (still used nowhere else,
+// left in place) rather than editing it in place, so nothing outside openDetail() is affected.
+function detailGalleryHtml(item) {
+  const media = (item.media && item.media.length) ? item.media : (item.media_url ? [{ url: item.media_url, media_type: item.media_type, thumb_url: item.thumb_url }] : []);
+  if (!media.length) {
+    if (item.pending_media_count > 0) {
+      return `<div class="detail-gallery-hero detail-gallery-empty"><span class="thumb-emoji">🕒</span><p>${item.pending_media_count} photo${item.pending_media_count > 1 ? 's' : ''} under review — will appear here once approved</p></div>`;
+    }
+    // "Listing without an image" test case — a clear, on-brand placeholder instead of empty space.
+    return `<div class="detail-gallery-hero detail-gallery-empty"><span class="thumb-emoji">📦</span><p>No photo added for this listing</p></div>`;
+  }
+  const first = media[0];
+  const heroInner = first.media_type === 'video' ? `<video src="${first.url}" controls></video>` : `<img src="${first.url}" id="detailHeroImg">`;
+  const thumbs = media.length > 1 ? `<div class="detail-gallery-thumbs">${media.map((m, i) => `
+    <button type="button" class="detail-gallery-thumb${i === 0 ? ' active' : ''}" data-i="${i}">${m.media_type === 'video' ? `<video src="${m.url}" muted></video>` : `<img src="${m.thumb_url || m.url}">`}</button>`).join('')}</div>` : '';
+  return `<div class="detail-gallery"><div class="detail-gallery-hero" id="detailGalleryHero">${heroInner}</div>${thumbs}</div>`;
+}
+
+// Clear availability state, surfaced up front rather than only implied by whether a claim form
+// happens to render below — explicitly requested for the "expired/closed listing" case.
+function detailAvailabilityHtml(item) {
+  if (item.status === 'claimed') return `<span class="detail-availability claimed"><i data-lucide="handshake" style="width:13px;height:13px"></i>Claimed</span>`;
+  if (item.status !== 'available') return `<span class="detail-availability closed"><i data-lucide="x-circle" style="width:13px;height:13px"></i>No longer available</span>`;
+  return `<span class="detail-availability available"><i data-lucide="check-circle" style="width:13px;height:13px"></i>Available</span>`;
+}
+
+const CONDITION_LABELS = { new: 'New', like_new: 'Like new', used: 'Used', needs_repair: 'Needs repair' };
+function conditionLabel(c) { return CONDITION_LABELS[c] || titleCase((c || '').replace(/_/g, ' ')); }
+
+// Food Rescue listings (same FOOD_CATEGORIES_FRONT check already used by the post form to decide
+// whether to show food-specific fields) get a dedicated highlight panel on the detail page: urgent
+// state, quantity/servings exactly as the poster entered it, area, and a live-computed countdown
+// (foodRescueCountdownLabel — same helper already used on the homepage Food Rescue hero cards).
+// Nothing here is fabricated — every value only renders if the listing actually has it.
+function foodRescueDetailHtml(item) {
+  const countdown = item.available_until ? foodRescueCountdownLabel(item.available_until) : '';
+  const area = item.pickup_area || item.owner_location || '';
+  return `<div class="detail-food-panel">
+    <div class="detail-food-panel-head"><span aria-hidden="true">🍱</span>Food Rescue listing${item.is_urgent ? '<span class="detail-food-urgent">URGENT</span>' : ''}</div>
+    <div class="detail-food-meta">
+      ${item.quantity ? `<span><i data-lucide="users" style="width:13px;height:13px"></i>${escapeHtml(item.quantity)}</span>` : ''}
+      ${area ? `<span><i data-lucide="map-pin" style="width:13px;height:13px"></i>${escapeHtml(area)}</span>` : ''}
+      ${countdown ? `<span><i data-lucide="clock" style="width:13px;height:13px"></i>${escapeHtml(countdown)}</span>` : ''}
+    </div>
+  </div>`;
+}
+
 // Formats available_until ("YYYY-MM-DD HH:MM:SS") into a short local time/date for display.
 // Deliberately labeled "available until" everywhere in the UI — this is the donor's stated pickup
 // deadline, not a certified food-safety expiry date.
@@ -2729,39 +2778,66 @@ function bindCopyButtons(root) {
 async function openDetail(id) {
   const item = await api('/api/items/' + id);
   const isOwner = state.user && state.user.id === item.user_id;
+  const isFoodRescue = FOOD_CATEGORIES_FRONT.includes(item.category);
+  const unavailable = item.status !== 'available';
+  const liked = state.wishlist.has(item.id);
   showModal(`
-    ${galleryHtml(item)}
+    ${detailGalleryHtml(item)}
+    <div class="detail-status-row">
+      <span class="detail-price-badge ${itemPriceBadgeClass(item)}">${itemPriceLabel(item)}</span>
+      ${item.is_urgent ? `<span class="detail-urgent-badge">🔥 Urgent</span>` : ''}
+      ${detailAvailabilityHtml(item)}
+    </div>
     <div class="detail-title-row">
       <h2>${escapeHtml(item.title)}</h2>
-      <button type="button" id="shareItemBtn" class="share-btn" aria-label="Share this listing">${SHARE_SVG} Share</button>
+      <div class="detail-title-actions">
+        <button type="button" class="wishlist-btn detail-wishlist-btn${liked ? ' active' : ''}" data-wish="${item.id}" aria-label="Save to wishlist">${HEART_SVG}</button>
+        <button type="button" id="shareItemBtn" class="share-btn" aria-label="Share this listing">${SHARE_SVG} Share</button>
+      </div>
     </div>
-    ${badgeHtml(item)}
-    <p style="margin-top:12px">${escapeHtml(item.description)}</p>
-    <div class="hint">Category: ${escapeHtml(displayCategory(item.category))} · Condition: ${escapeHtml(item.condition)} ${item.quantity ? '· Qty: ' + escapeHtml(item.quantity) : ''}</div>
+    <div class="detail-meta-row">
+      <span>${escapeHtml(displayCategory(item.category))}</span><span>·</span>
+      <span>${escapeHtml(conditionLabel(item.condition))}</span><span>·</span>
+      <span>${escapeHtml(timeAgo(item.created_at))}</span>
+      ${item.quantity ? `<span>·</span><span>Qty: ${escapeHtml(item.quantity)}</span>` : ''}
+    </div>
+    ${item.pickup_available || (item.food_pref && FOOD_PREF_LABELS[item.food_pref]) || item.is_recurring ? `<div class="detail-status-row" style="margin-top:8px">
+      ${item.pickup_available ? `<span class="pickup-badge">🚚 Pickup available</span>` : ''}
+      ${item.food_pref && FOOD_PREF_LABELS[item.food_pref] ? `<span class="badge food-pref">${FOOD_PREF_LABELS[item.food_pref]}</span>` : ''}
+      ${item.is_recurring ? `<span class="badge recurring">${escapeHtml(item.frequency || 'recurring')}</span>` : ''}
+    </div>` : ''}
     ${item.price_type === 'exchange' && item.exchange_for ? `<div class="hint">Wants in exchange: ${escapeHtml(item.exchange_for)}</div>` : ''}
     ${item.price_type === 'rent' ? `<div class="hint">Rent: ₹${item.rent_rate}/${escapeHtml(item.rent_period || 'day')}${item.deposit ? ` · Suggested deposit: ₹${item.deposit}` : ''}</div>` : ''}
-    ${item.is_recurring ? `<div class="hint">Recurring ${escapeHtml(item.frequency)} surplus posting.</div>` : ''}
-    ${item.available_until ? `<div class="hint food-until-hint">🕐 Food available until ${escapeHtml(formatAvailableUntil(item.available_until))} <span class="hint">(donor's stated pickup deadline, not a certified food-safety date)</span></div>` : ''}
+    ${isFoodRescue ? foodRescueDetailHtml(item) : ''}
+    ${item.available_until ? `<div class="hint food-until-hint">🕐 Available until ${escapeHtml(formatAvailableUntil(item.available_until))} <span class="hint">(donor's stated pickup deadline, not a certified food-safety date)</span></div>` : ''}
+    <div class="detail-section">
+      <h3 class="detail-section-title">Description</h3>
+      <p class="detail-description">${escapeHtml(item.description)}</p>
+    </div>
     <div class="detail-owner">
       Posted by <button type="button" class="owner-name-link" data-uid="${escapeHtml(item.user_id)}"><strong>${escapeHtml(item.owner_name)}</strong></button> ${item.owner_type === 'business' ? '<span class="owner-badge">Business</span>' : '<span class="owner-badge">Individual</span>'}
       ${item.owner_verified ? ' <span class="verified-badge">✓ Verified</span>' : ''}
-      ${item.owner_location ? `<br>Location: ${escapeHtml(item.owner_location)}` : ''}
+      ${item.owner_location ? `<br>📍 ${escapeHtml(item.owner_location)}` : ''}
     </div>
-    ${item.pickup_area ? `<div class="hint">📍 ${escapeHtml(item.pickup_area)}</div>` : ''}
+    ${item.pickup_area && item.pickup_area !== item.owner_location ? `<div class="hint">📍 Pickup area: ${escapeHtml(item.pickup_area)}</div>` : ''}
     ${exactPickupHtml(item)}
     ${isOwner ? `
-      <button class="primary-btn" id="editItemBtn">Edit</button>
-      <button class="primary-btn" id="closeItemBtn" style="background:#c0392b">Mark as given away / closed</button>
+      <div class="detail-actions">
+        <button class="primary-btn" id="editItemBtn">Edit</button>
+        <button class="primary-btn" id="closeItemBtn" style="background:#c0392b">Mark as given away / closed</button>
+      </div>
     ` : `
-      <form id="claimForm">
-        <label>Message to owner (optional)</label>
-        <textarea name="message" placeholder="e.g. I'd like to pick this up tomorrow"></textarea>
-        <div class="error" id="claimError"></div>
-        <button class="primary-btn" type="submit">${item.price_type === 'paid' ? 'Request to buy' : item.price_type === 'exchange' ? 'Propose exchange' : item.price_type === 'rent' ? 'Request to rent' : 'Request this item'}</button>
-      </form>
+      ${!unavailable ? `
+        <form id="claimForm">
+          <label>Message to owner (optional)</label>
+          <textarea name="message" placeholder="e.g. I'd like to pick this up tomorrow"></textarea>
+          <div class="error" id="claimError"></div>
+          <button class="primary-btn" type="submit">${isFoodRescue ? 'I can help' : item.price_type === 'paid' ? 'Request to buy' : item.price_type === 'exchange' ? 'Propose exchange' : item.price_type === 'rent' ? 'Request to rent' : 'Request this item'}</button>
+        </form>
+      ` : `<div class="detail-unavailable-note">${item.status === 'claimed' ? '🤝 This item has already been claimed by someone else.' : '🚫 This item is no longer available.'}</div>`}
       ${state.user ? `<p style="margin-top:10px"><a href="#" id="reportLink" style="color:#c0392b;font-size:12px">Report this post</a></p>` : ''}
     `}
-  `);
+  `, 'detail-modal');
   if (isOwner) {
     $('#editItemBtn').onclick = () => openEditModal(item);
     $('#closeItemBtn').onclick = async () => {
@@ -2769,27 +2845,52 @@ async function openDetail(id) {
       closeModal(); loadItems();
     };
   } else {
-    $('#claimForm').onsubmit = async (e) => {
-      e.preventDefault();
-      if (!state.user) { closeModal(); openAuthModal('login'); return; }
-      const fd = Object.fromEntries(new FormData(e.target));
-      try {
-        await api(`/api/items/${item.id}/claim`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(fd) });
-        closeModal();
-        alert('Request sent to the owner!');
-        loadTrending();
-      } catch (err) { $('#claimError').textContent = err.message; }
-    };
+    const claimForm = $('#claimForm');
+    if (claimForm) {
+      claimForm.onsubmit = async (e) => {
+        e.preventDefault();
+        if (!state.user) { closeModal(); openAuthModal('login'); return; }
+        const fd = Object.fromEntries(new FormData(e.target));
+        try {
+          await api(`/api/items/${item.id}/claim`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(fd) });
+          closeModal();
+          alert('Request sent to the owner!');
+          loadTrending();
+        } catch (err) { $('#claimError').textContent = err.message; }
+      };
+    }
     const reportLink = $('#reportLink');
     if (reportLink) reportLink.onclick = (e) => { e.preventDefault(); openReportModal('item', item.id); };
   }
-  // Wire the gallery strip up to the lightbox — real uploaded photos only (videos in .gallery
-  // render as <video>, not <img>, so they're naturally excluded here).
+  // Wire the gallery hero + thumbnail strip up to the lightbox — real uploaded photos only (videos
+  // get native controls instead, same as before, so they're excluded from the lightbox image set).
   const media = (item.media && item.media.length) ? item.media : (item.media_url ? [{ url: item.media_url, media_type: item.media_type }] : []);
   const galleryImages = media.filter(m => m.media_type !== 'video');
-  modalRoot.querySelectorAll('.gallery img').forEach((img, i) => { img.onclick = () => openLightbox(galleryImages, i); img.style.cursor = 'zoom-in'; });
+  function bindDetailHero(m) {
+    const heroImg = $('#detailHeroImg');
+    if (!heroImg) return;
+    heroImg.style.cursor = 'zoom-in';
+    heroImg.onclick = () => {
+      const idx = galleryImages.findIndex(g => g.url === m.url);
+      openLightbox(galleryImages, idx >= 0 ? idx : 0);
+    };
+  }
+  if (media.length) bindDetailHero(media[0]);
+  modalRoot.querySelectorAll('.detail-gallery-thumb').forEach(btn => {
+    btn.onclick = () => {
+      const i = +btn.dataset.i;
+      const m = media[i];
+      modalRoot.querySelectorAll('.detail-gallery-thumb').forEach(t => t.classList.remove('active'));
+      btn.classList.add('active');
+      const heroEl = $('#detailGalleryHero');
+      heroEl.innerHTML = m.media_type === 'video' ? `<video src="${m.url}" controls></video>` : `<img src="${m.url}" id="detailHeroImg">`;
+      bindDetailHero(m);
+    };
+  });
   bindCopyButtons();
   bindShareButton(item);
+  bindWishlistButtons(modalRoot);
+  if (window.lucide) lucide.createIcons();
 }
 
 // Share this listing. navigator.share() gives the native OS share sheet (WhatsApp, etc.) on mobile
