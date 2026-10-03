@@ -3200,12 +3200,92 @@ function openPostRequestModal() {
 }
 
 // ---------- request detail ----------
-async function openRequestDetail(id) {
+// Status panel shown instead of the respond form when the current user already has a pending/
+// accepted offer on this exact request — same purpose and same read-only reuse of an existing
+// endpoint (/api/my/request-offers-sent, already used by the Activity page) as claimStatusPanelHtml
+// does for items. A previously declined offer does not block a new attempt, matching the backend
+// (declining never changes the request's 'open' status).
+function requestOfferStatusPanelHtml(offer) {
+  if (offer.status === 'accepted') {
+    return `<div class="claim-status-panel accepted">
+      <strong>✓ Your offer was accepted!</strong>
+      <p>Coordinate with the requester from your Activity page.</p>
+      <button type="button" class="ghost" id="offerStatusViewActivity">View in Activity →</button>
+    </div>`;
+  }
+  return `<div class="claim-status-panel pending">
+    <strong>⏳ You already offered to help with this request</strong>
+    <p>Waiting for the requester to respond — you'll be notified when they do.</p>
+    <button type="button" class="ghost" id="offerStatusViewActivity">View in Activity →</button>
+  </div>`;
+}
+
+// Confirmation step between "I can help" and the actual API call — mirrors openClaimConfirmModal()
+// for items: shows exactly what's being offered (request title, budget/price context, message,
+// price offered, pickup summary) before submitting, and the real POST /api/requests/:id/respond call
+// (same endpoint/payload the old direct-submit used) gets its own disabled/loading state plus inline
+// error handling instead of a dead-end alert().
+function openOfferConfirmModal(request, fd) {
+  showModal(`
+    <h2>Confirm — I can help</h2>
+    <div class="claim-confirm-item">
+      <div class="claim-confirm-thumb">${request.request_type === 'service' ? '🔧' : '📦'}</div>
+      <div class="claim-confirm-info">
+        <strong>${escapeHtml(request.title)}</strong>
+        <div class="hint">${requestPriceLabel(request)}</div>
+      </div>
+    </div>
+    ${request.is_urgent && request.request_type === 'service' ? `<div class="emergency-note">⚠️ Need immediate help? For emergencies or unsafe situations, contact local emergency or roadside assistance services rather than relying on a community response.</div>` : ''}
+    <div class="hint" style="margin-top:10px">${fd.message ? `Your message: "${escapeHtml(fd.message)}"` : 'No message added.'}</div>
+    ${fd.offered_price ? `<div class="hint">Your price: ₹${escapeHtml(fd.offered_price)}</div>` : ''}
+    ${fd.pickup_area ? `<div class="hint">📍 ${escapeHtml(fd.pickup_area)}</div>` : ''}
+    <div class="error" id="offerConfirmError"></div>
+    <div class="post-form-actions" style="margin-top:16px">
+      <button type="button" class="ghost" id="offerConfirmBack">← Back</button>
+      <button type="button" class="primary-btn" id="offerConfirmSubmit">I can help</button>
+    </div>
+  `);
+  $('#offerConfirmBack').onclick = () => openRequestDetail(request.id, fd);
+  const submitBtn = $('#offerConfirmSubmit');
+  submitBtn.onclick = async () => {
+    if (submitBtn.disabled) return;
+    submitBtn.disabled = true;
+    const original = submitBtn.textContent;
+    submitBtn.textContent = 'Sending…';
+    try {
+      await api(`/api/requests/${request.id}/respond`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(fd) });
+      closeModal();
+      showToast('Your offer to help was sent!', 'success');
+      loadRequests();
+    } catch (err) {
+      // Covers both a real rejection (the request moved to fulfilled/closed while this modal was
+      // open — the exact "This request is no longer open" message the API already returns) and a
+      // network failure — either way the typed fields survive (still held in fd) and the button
+      // re-enables so the user can retry.
+      $('#offerConfirmError').textContent = err.message || 'Something went wrong. Please check your connection and try again.';
+      submitBtn.disabled = false;
+      submitBtn.textContent = original;
+    }
+  };
+}
+
+async function openRequestDetail(id, prefill) {
   const r = await api('/api/requests/' + id);
   const isOwner = state.user && state.user.id === r.user_id;
+  const unavailable = r.status !== 'open';
+  // Same existing-offer check as the item claim flow (see openDetail()) — reuses the existing
+  // /api/my/request-offers-sent endpoint purely as a read, no new API.
+  let myOffer = null;
+  if (!isOwner && state.user && !unavailable) {
+    try {
+      const offers = await api('/api/my/request-offers-sent');
+      const mine = offers.filter(o => o.request_id === r.id);
+      myOffer = mine.find(o => o.status === 'pending') || mine.find(o => o.status === 'accepted') || null;
+    } catch { /* non-critical — fall back to showing the normal form */ }
+  }
   showModal(`
     <h2>${escapeHtml(r.title)}</h2>
-    ${requestBadgeHtml(r)}
+    ${requestBadgeHtml(r)} ${!isOwner ? (unavailable ? `<span class="detail-availability closed">No longer open</span>` : `<span class="detail-availability available">✓ Open</span>`) : ''}
     <p style="margin-top:12px">${escapeHtml(r.description)}</p>
     <div class="hint">Category: ${escapeHtml(displayCategory(r.category))} ${r.quantity ? '· Qty: ' + escapeHtml(r.quantity) : ''}</div>
     ${r.budget_type === 'exchange' && r.exchange_for ? `<div class="hint">Can exchange for: ${escapeHtml(r.exchange_for)}</div>` : ''}
@@ -3218,19 +3298,21 @@ async function openRequestDetail(id) {
     ${isOwner ? `
       <div class="privacy-note">🔒 Your exact location and contact details stay private. They're only shared once you accept a helper below.</div>
       <button class="primary-btn" id="closeRequestBtn" style="background:#c0392b">Mark as fulfilled / closed</button>
-    ` : `
+    ` : unavailable ? `
+      <div class="detail-unavailable-note">${r.status === 'fulfilled' ? '🤝 This request has already been fulfilled by someone else.' : '🚫 This request is no longer open.'}</div>
+    ` : myOffer ? requestOfferStatusPanelHtml(myOffer) : `
       <form id="respondForm">
         <label>How can you help? (optional)</label>
-        <textarea name="message" placeholder="e.g. I have one available, can drop it off tomorrow"></textarea>
-        ${r.budget_type === 'paid' ? `<label>Your price (₹, optional)</label><input name="offered_price" type="number" min="0" step="1" placeholder="Leave blank to accept their budget">` : ''}
-        ${pickupFieldsHtml()}
+        <textarea name="message" placeholder="e.g. I have one available, can drop it off tomorrow">${escapeHtml((prefill && prefill.message) || '')}</textarea>
+        ${r.budget_type === 'paid' ? `<label>Your price (₹, optional)</label><input name="offered_price" type="number" min="0" step="1" placeholder="Leave blank to accept their budget" value="${escapeHtml((prefill && prefill.offered_price) || '')}">` : ''}
+        ${pickupFieldsHtml(prefill)}
         <div class="hint">🔒 Your message is sent to the requester. Contact details are only exchanged if they accept your offer.</div>
         <div class="safety-note">⚠️ Stay safe: never send money, OTPs, passwords, or banking details to another member. Avoid paying anyone in advance unless you've met and confirmed the work.</div>
         <div class="error" id="respondError"></div>
         <button class="primary-btn" type="submit">I can help</button>
       </form>
-      ${state.user ? `<p style="margin-top:10px"><a href="#" id="reportRequestLink" style="color:#c0392b;font-size:12px">Report this post</a></p>` : ''}
     `}
+    ${!isOwner && state.user ? `<p style="margin-top:10px"><a href="#" id="reportRequestLink" style="color:#c0392b;font-size:12px">Report this post</a></p>` : ''}
   `);
   if (isOwner) {
     $('#closeRequestBtn').onclick = async () => {
@@ -3238,16 +3320,19 @@ async function openRequestDetail(id) {
       closeModal(); loadRequests();
     };
   } else {
-    $('#respondForm').onsubmit = async (e) => {
-      e.preventDefault();
-      if (!state.user) { closeModal(); openAuthModal('login'); return; }
-      const fd = Object.fromEntries(new FormData(e.target));
-      try {
-        await api(`/api/requests/${r.id}/respond`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(fd) });
-        closeModal();
-        alert('Your offer to help was sent!');
-      } catch (err) { $('#respondError').textContent = err.message; }
-    };
+    const respondForm = $('#respondForm');
+    if (respondForm) {
+      // Submitting no longer calls the API directly — it opens a confirmation step first
+      // (openOfferConfirmModal), exactly mirroring the item claim flow's two-step pattern.
+      respondForm.onsubmit = (e) => {
+        e.preventDefault();
+        if (!state.user) { closeModal(); openAuthModal('login'); return; }
+        const fd = Object.fromEntries(new FormData(e.target));
+        openOfferConfirmModal(r, fd);
+      };
+    }
+    const viewActivityBtn = $('#offerStatusViewActivity');
+    if (viewActivityBtn) viewActivityBtn.onclick = () => { closeModal(); openActivity('tabOffersSent'); };
     const reportLink = $('#reportRequestLink');
     if (reportLink) reportLink.onclick = (e) => { e.preventDefault(); openReportModal('request', r.id); };
   }
@@ -3815,6 +3900,22 @@ function myPostsFilteredLists() {
   items = items.filter(it => (!q || it.title.toLowerCase().includes(q)) && myPostsItemMatchesStatus(it) && (!cat || displayCategory(it.category) === cat));
   requests = requests.filter(r => (!q || r.title.toLowerCase().includes(q)) && myPostsRequestMatchesStatus(r) && (!cat || displayCategory(r.category) === cat));
   return { items, requests };
+}
+
+// One place that decides the "Open / Offer received / Accepted / Declined / Completed" vocabulary
+// for a claim or request-offer row in the Activity dashboard, reused across all four tabs so item
+// claims and request offers read identically. `side` is 'received' (viewer is the owner deciding)
+// or 'sent' (viewer is the one who asked/offered) — only changes the pending label's wording.
+function flowStatusBadgeHtml(status, side) {
+  const map = {
+    pending: { label: side === 'received' ? 'Offer received' : 'Pending', cls: 'pending' },
+    accepted: { label: 'Accepted', cls: 'accepted' },
+    declined: { label: 'Declined', cls: 'declined' },
+    completed: { label: 'Completed', cls: 'completed' },
+    not_completed: { label: 'Not completed', cls: 'declined' }
+  };
+  const m = map[status] || { label: titleCase(status), cls: 'pending' };
+  return `<span class="badge my-post-status ${m.cls}">${m.label}</span>`;
 }
 
 function myPostStatusBadgeHtml(status) {
@@ -4446,22 +4547,96 @@ function confirmBlockHtml(row, role, kind) {
   </div>`;
 }
 
+// Shared Accept/Decline wiring for both "item requests received" (claims) and "offers received" —
+// same PATCH-to-accept/decline shape on both (/api/claims/:id or /api/request-offers/:id) and the
+// same failure modes (duplicate accept after the item/request already moved to someone else, a
+// network error) — one implementation covers both instead of duplicating loading/error handling.
+// AUDIT FIX: previously neither tab's Accept/Decline buttons had any try/catch at all, so a rejected
+// PATCH (e.g. "This item is no longer available" when a second offer is accepted after the first)
+// threw an unhandled promise rejection with zero visible feedback — the buttons just sat there,
+// looking like nothing happened. Also previously had no disabled state, so a double-click/double-tap
+// could fire the PATCH twice.
+function bindAcceptDeclineButtons(el, urlBase, onDone) {
+  el.querySelectorAll('.claim-row').forEach(row => {
+    const buttons = [...row.querySelectorAll('button[data-id]')];
+    if (!buttons.length) return;
+    buttons.forEach(btn => {
+      btn.onclick = async () => {
+        if (btn.disabled) return;
+        buttons.forEach(b => b.disabled = true);
+        const original = btn.textContent;
+        btn.textContent = btn.dataset.status === 'accepted' ? 'Accepting…' : 'Declining…';
+        let errorEl = row.querySelector('.accept-decline-error');
+        if (!errorEl) {
+          errorEl = document.createElement('div');
+          errorEl.className = 'error accept-decline-error';
+          row.querySelector('.actions').insertAdjacentElement('afterend', errorEl);
+        }
+        errorEl.textContent = '';
+        try {
+          await api(`${urlBase}/${btn.dataset.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: btn.dataset.status }) });
+          showToast(btn.dataset.status === 'accepted' ? 'Accepted!' : 'Declined.', 'success');
+          onDone();
+        } catch (err) {
+          errorEl.textContent = err.message || 'Something went wrong. Please try again.';
+          buttons.forEach(b => b.disabled = false);
+          btn.textContent = original;
+        }
+      };
+    });
+  });
+}
+
 function bindConfirmBlocks(el, onDone) {
   el.querySelectorAll('.confirm-block').forEach(block => {
     const kind = block.dataset.kind, id = block.dataset.cid;
     const url = `/api/${kind === 'claim' ? 'claims' : 'request-offers'}/${id}/confirm`;
-    block.querySelector('.confirm-yes').onclick = async () => {
-      await api(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ confirmed: true }) });
-      onDone();
+    // Same disable-while-submitting + inline-error pattern as bindAcceptDeclineButtons above —
+    // previously these three buttons had no loading state and no error handling at all.
+    function errorBox() {
+      let el2 = block.querySelector('.confirm-error');
+      if (!el2) {
+        el2 = document.createElement('div');
+        el2.className = 'error confirm-error';
+        block.appendChild(el2);
+      }
+      return el2;
+    }
+    const yesBtn = block.querySelector('.confirm-yes');
+    const noBtn = block.querySelector('.confirm-no');
+    yesBtn.onclick = async () => {
+      if (yesBtn.disabled) return;
+      yesBtn.disabled = true; noBtn.disabled = true;
+      const original = yesBtn.textContent;
+      yesBtn.textContent = 'Confirming…';
+      try {
+        await api(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ confirmed: true }) });
+        onDone();
+      } catch (err) {
+        errorBox().textContent = err.message || 'Something went wrong. Please try again.';
+        yesBtn.disabled = false; noBtn.disabled = false;
+        yesBtn.textContent = original;
+      }
     };
-    block.querySelector('.confirm-no').onclick = () => {
+    noBtn.onclick = () => {
       block.querySelector('.actions').style.display = 'none';
       block.querySelector('.confirm-reason').style.display = 'flex';
     };
-    block.querySelector('.confirm-no-submit').onclick = async () => {
+    const submitBtn = block.querySelector('.confirm-no-submit');
+    submitBtn.onclick = async () => {
+      if (submitBtn.disabled) return;
+      submitBtn.disabled = true;
+      const original = submitBtn.textContent;
+      submitBtn.textContent = 'Submitting…';
       const reason = block.querySelector('.reason-select').value;
-      await api(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ confirmed: false, reason }) });
-      onDone();
+      try {
+        await api(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ confirmed: false, reason }) });
+        onDone();
+      } catch (err) {
+        errorBox().textContent = err.message || 'Something went wrong. Please try again.';
+        submitBtn.disabled = false;
+        submitBtn.textContent = original;
+      }
     };
   });
 }
@@ -4501,9 +4676,9 @@ async function setActivityTab(tabId) {
     // accepted, contact info becomes genuinely necessary, so it's shown then.
     el.innerHTML = claims.length ? claims.map(c => `
       <div class="claim-row">
-        <strong>${escapeHtml(c.item_title)}</strong> — from <button type="button" class="owner-name-link" data-uid="${escapeHtml(c.requester_id)}">${escapeHtml(c.requester_name)}</button>${c.requester_verified ? ' <span class="verified-badge">✓ Verified</span>' : ''}
+        <div class="claim-row-head"><strong>${escapeHtml(c.item_title)}</strong>${flowStatusBadgeHtml(c.status, 'received')}</div>
+        <div class="hint">From <button type="button" class="owner-name-link" data-uid="${escapeHtml(c.requester_id)}">${escapeHtml(c.requester_name)}</button>${c.requester_verified ? ' <span class="verified-badge">✓ Verified</span>' : ''}</div>
         <div class="hint">${escapeHtml(c.message || 'No message')}</div>
-        <div class="hint">Status: ${c.status}</div>
         ${(c.status === 'accepted' || c.status === 'completed' || c.status === 'not_completed') && c.requester_email ? `<div class="hint">✉️ ${escapeHtml(c.requester_email)}</div>` : ''}
         ${c.status === 'pending' ? `<div class="hint">🔒 Their contact details stay private until you accept.</div><div class="actions">
           <button class="accept" data-id="${c.id}" data-status="accepted">Accept</button>
@@ -4512,19 +4687,15 @@ async function setActivityTab(tabId) {
         ${confirmBlockHtml(c, 'giver', 'claim')}
         ${ratingPromptHtml(c, 'claim', ratedSet)}
       </div>`).join('') : `<div class="empty">No requests received yet.</div>`;
-    el.querySelectorAll('button[data-id]').forEach(b => b.onclick = async () => {
-      await api('/api/claims/' + b.dataset.id, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: b.dataset.status }) });
-      setActivityTab('tabItemsReceived');
-      loadItems();
-    });
+    bindAcceptDeclineButtons(el, '/api/claims', () => { setActivityTab('tabItemsReceived'); loadItems(); });
     bindConfirmBlocks(el, () => { setActivityTab('tabItemsReceived'); loadItems(); loadMonthlyBadges(); });
     bindRatingPrompts(el, () => { setActivityTab('tabItemsReceived'); });
   } else if (tabId === 'tabItemsSent') {
     const claims = await api('/api/my/claims-sent');
     el.innerHTML = claims.length ? claims.map(c => `
       <div class="claim-row">
-        <strong>${escapeHtml(c.item_title)}</strong>
-        <div class="hint">Your request status: ${c.status} · Item status: ${c.item_status}</div>
+        <div class="claim-row-head"><strong>${escapeHtml(c.item_title)}</strong>${flowStatusBadgeHtml(c.status, 'sent')}</div>
+        <div class="hint">Listing: ${myPostStatusBadgeHtml(c.item_status)}</div>
         ${confirmBlockHtml(c, 'receiver', 'claim')}
         ${ratingPromptHtml(c, 'claim', ratedSet)}
       </div>`).join('') : `<div class="empty">You haven't requested anything yet.</div>`;
@@ -4536,9 +4707,9 @@ async function setActivityTab(tabId) {
     // pickup only once accepted (server already enforces this — see stripExactPickup).
     el.innerHTML = offers.length ? offers.map(o => `
       <div class="claim-row">
-        <strong>${escapeHtml(o.request_title)}</strong> — from <button type="button" class="owner-name-link" data-uid="${escapeHtml(o.responder_id)}">${escapeHtml(o.responder_name)}</button>${o.responder_verified ? ' <span class="verified-badge">✓ Verified</span>' : ''}
-        <div class="hint">${escapeHtml(o.message || 'No message')}${o.offered_price ? ' · Offered ₹' + o.offered_price : ''}</div>
-        <div class="hint">Status: ${o.status}</div>
+        <div class="claim-row-head"><strong>${escapeHtml(o.request_title)}</strong>${flowStatusBadgeHtml(o.status, 'received')}</div>
+        <div class="hint">From <button type="button" class="owner-name-link" data-uid="${escapeHtml(o.responder_id)}">${escapeHtml(o.responder_name)}</button>${o.responder_verified ? ' <span class="verified-badge">✓ Verified</span>' : ''}</div>
+        <div class="hint">${escapeHtml(o.message || 'No message')}${o.offered_price ? ' · 💰 Offered ₹' + o.offered_price : ''}</div>
         ${(o.status === 'accepted' || o.status === 'completed') && o.responder_email ? `<div class="hint">✉️ ${escapeHtml(o.responder_email)}</div>` : ''}
         ${o.status === 'pending' ? `<div class="hint">🔒 Their contact details stay private until you accept.</div><div class="actions">
           <button class="accept" data-id="${o.id}" data-status="accepted">Accept</button>
@@ -4550,19 +4721,15 @@ async function setActivityTab(tabId) {
         ${ratingPromptHtml(o, 'offer', ratedSet)}
       </div>`).join('') : `<div class="empty">No offers received yet.</div>`;
     bindCopyButtons(el);
-    el.querySelectorAll('button[data-id]').forEach(b => b.onclick = async () => {
-      await api('/api/request-offers/' + b.dataset.id, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: b.dataset.status }) });
-      setActivityTab('tabOffersReceived');
-      loadRequests();
-    });
+    bindAcceptDeclineButtons(el, '/api/request-offers', () => { setActivityTab('tabOffersReceived'); loadRequests(); });
     bindConfirmBlocks(el, () => { setActivityTab('tabOffersReceived'); loadRequests(); loadMonthlyBadges(); });
     bindRatingPrompts(el, () => { setActivityTab('tabOffersReceived'); });
   } else {
     const offers = await api('/api/my/request-offers-sent');
     el.innerHTML = offers.length ? offers.map(o => `
       <div class="claim-row">
-        <strong>${escapeHtml(o.request_title)}</strong>
-        <div class="hint">Your offer status: ${o.status} · Request status: ${o.request_status}</div>
+        <div class="claim-row-head"><strong>${escapeHtml(o.request_title)}</strong>${flowStatusBadgeHtml(o.status, 'sent')}</div>
+        <div class="hint">Request: ${myPostRequestStatusBadgeHtml(o.request_status)}</div>
         ${o.pickup_area ? `<div class="hint">📍 ${escapeHtml(o.pickup_area)}</div>` : ''}
         ${confirmBlockHtml(o, 'giver', 'offer')}
         ${ratingPromptHtml(o, 'offer', ratedSet)}

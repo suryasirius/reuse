@@ -1345,6 +1345,7 @@ form button[disabled], .primary-btn[disabled]{opacity:.6;cursor:not-allowed;tran
 .claim-row .actions{margin-top:10px;display:flex;gap:8px}
 .claim-row button{padding:7px 14px;border-radius:var(--radius-full);border:none;cursor:pointer;font-size:12px;font-weight:700;transition:filter .15s}
 .claim-row button:hover{filter:brightness(1.08)}
+.claim-row button[disabled]{opacity:.6;cursor:not-allowed;filter:none}
 .accept{background:var(--brand);color:#fff}
 .decline{background:var(--danger);color:#fff}
 
@@ -2247,6 +2248,12 @@ html,body{overflow-x:hidden;max-width:100%}
 .badge.my-post-status.active{background:#EAF6EE;color:var(--brand-dark)}
 .badge.my-post-status.claimed{background:#FFF3E0;color:#B45F06}
 .badge.my-post-status.completed{background:#EEF1EC;color:var(--muted)}
+/* Added for the Requests/Offers flow status chips (flowStatusBadgeHtml in app.js) — reuses the
+   same .badge.my-post-status family rather than a new chip style. */
+.badge.my-post-status.pending{background:#FFF8E6;color:#8a6d00}
+.badge.my-post-status.accepted{background:#EAF6EE;color:var(--brand-dark)}
+.badge.my-post-status.declined{background:#fdecec;color:#a12626}
+.claim-row-head{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-bottom:2px}
 
 .my-post-actions{display:flex;align-items:center;gap:8px;padding-top:10px;border-top:1px solid var(--border-soft)}
 .my-post-action-btn{
