@@ -435,7 +435,32 @@ main{max-width:1800px;width:calc(100vw - 64px);margin:0 auto;padding:14px 12px 6
 }
 .hero-illustration img{width:100%;height:100%;object-fit:contain;object-position:right bottom;display:block}
 .hero-footer-compact{padding-top:0;border-top:none;margin-top:0;justify-content:center}
-@media (max-width:900px){.hero-illustration{display:none}.hero-text-col{max-width:100%}}
+/* MOBILE ARTWORK — controlled crop (replaces the old display:none below 900px).
+   reuse-hero.png is 1672x941 and has a large dark decorative swirl baked into its own left ~40%;
+   the clean chair/lamp/plant/bicycle photo occupies the right ~55-60%. Rather than show the whole
+   image (which is what produced the black/white diagonal artifact on real mobile browsers, even
+   though it never reproduced in Chrome's device emulator), this shows only a small cropped slice
+   pinned to the top-right corner, anchored via object-position:100% so cover-cropping always eats
+   into the image from the LEFT first. At the box sizes below the crop math works out so only the
+   rightmost ~48% of the image is ever visible (i.e. the crop boundary sits at ~52%, a full 12
+   percentage points clear of the 40% swirl boundary) — the swirl can never appear here. Sits behind
+   the headline/search (z-index:0, versus .hero-text-col's z-index:2) and is pointer-events:none so
+   it never blocks taps. Single-line rollback if ever needed: change display back to none. */
+@media (max-width:900px){
+  /* padding-right keeps every line of the headline/subtitle clear of the image box entirely
+     (130px = 112px image + 14px right offset + 4px gap), rather than letting text wrap underneath
+     a behind-the-text layer, which read as cluttered. */
+  .hero-text-col{max-width:100%;padding-right:130px}
+  .hero-illustration{
+    display:block;position:absolute;top:14px;right:14px;bottom:auto;left:auto;
+    width:112px;height:132px;border-radius:14px;overflow:hidden;z-index:0;opacity:.92;
+  }
+  .hero-illustration img{object-fit:cover;object-position:100% 38%}
+}
+@media (max-width:639px){
+  .hero-text-col{padding-right:106px}
+  .hero-illustration{width:92px;height:108px;top:12px;right:12px}
+}
 
 /* ---------- TARGETED HERO SIZE/COMPOSITION FIX (desktop only, >=900px) ----------
    Reference photo showed the hero too tall (~470px incl. search) with the artwork eating too
@@ -626,6 +651,18 @@ main{max-width:1800px;width:calc(100vw - 64px);margin:0 auto;padding:14px 12px 6
 .food-rescue-footer{display:flex;align-items:center;justify-content:space-between;gap:8px}
 .food-rescue-poster{display:flex;align-items:center;gap:6px;font-size:10.5px;color:var(--muted);white-space:nowrap}
 .food-rescue-avatar{width:20px;height:20px;font-size:10px}
+/* Replaces the old poster-initial avatar in this spot — small solid pill showing the listing's
+   actual price (FREE / ₹amount), same per-offer-type colors already used by .card .price-badge
+   elsewhere so it reads consistently with the rest of the site. */
+.food-rescue-price-badge{
+  display:inline-flex;align-items:center;padding:2px 8px;border-radius:999px;
+  font-size:9.5px;font-weight:800;color:#fff;text-transform:uppercase;letter-spacing:.2px;
+  background:var(--brand);flex-shrink:0;
+}
+.food-rescue-price-badge.paid{background:var(--orange)}
+.food-rescue-price-badge.rent{background:var(--blue)}
+.food-rescue-price-badge.exchange{background:#6A4FC7}
+.food-rescue-price-badge.claimed{background:var(--muted)}
 .food-rescue-cta{
   background:var(--brand-cta);color:#fff;font-size:11px;font-weight:800;padding:6px 11px;
   border-radius:999px;white-space:nowrap;flex-shrink:0;
@@ -1540,7 +1577,11 @@ html,body{overflow-x:hidden;max-width:100%}
 
   /* compact hero, no desktop redesign */
   .hero-banner-compact{padding:16px 18px;gap:8px}
-  .hero-compact-row{flex-wrap:wrap}
+  /* min-height:250px on .hero-compact-row (base rule, further up this file) is a desktop-era leftover
+     that still applied here even after flex-wrap, producing a large empty gap between the subtitle
+     and the search panel on mobile. Zeroing it out only below 640px — desktop's own height is set
+     independently on .hero-banner-compact (min-width:900px block) and is untouched. */
+  .hero-compact-row{flex-wrap:wrap;min-height:0}
   .hero-headline{font-size:20px;margin:0 0 4px}
   .hero-compact-title{font-size:13px}
   .hero-footer-compact{margin-top:0}

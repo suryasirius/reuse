@@ -496,7 +496,12 @@ function foodRescueCardHtml(item) {
   // quantity is free-text the poster typed in (e.g. "serves 10", "2 trays", or left blank) — shown
   // as-is when present rather than forced into a specific "~N meals" phrasing we can't guarantee
   // every listing actually has.
-  const initial = (item.owner_name || '?').trim().charAt(0).toUpperCase();
+  // The poster's-initial avatar ("S", "M"...) here read as a confusing unlabeled badge — it wasn't
+  // actually conveying anything a visitor needs at a glance. Swapped for the listing's real price
+  // using the exact same itemPriceLabel()/itemPriceBadgeClass() helpers the regular item cards
+  // already use elsewhere (see thumbInnerHtml/cardHtml) — same backend price_type/price fields, same
+  // ₹0-reads-as-Free rule, no new logic and nothing invented. "Posted ... ago" stays, just without
+  // the avatar glyph in front of it.
   return `<div class="food-rescue-card" data-id="${item.id}">
     <div class="food-rescue-card-photo">
       ${photoHtml}
@@ -509,7 +514,7 @@ function foodRescueCardHtml(item) {
         <span><i data-lucide="map-pin" style="width:12px;height:12px"></i> ${escapeHtml(item.owner_location || 'Nearby')}</span>
       </div>
       <div class="food-rescue-footer">
-        <span class="food-rescue-poster"><span class="user-avatar food-rescue-avatar">${escapeHtml(initial)}</span>Posted ${timeAgo(item.created_at)}</span>
+        <span class="food-rescue-poster"><span class="food-rescue-price-badge ${itemPriceBadgeClass(item)}">${escapeHtml(itemPriceLabel(item))}</span>Posted ${timeAgo(item.created_at)}</span>
         <span class="food-rescue-cta">I can help →</span>
       </div>
     </div>
