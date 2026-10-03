@@ -322,6 +322,20 @@ main{max-width:1800px;width:calc(100vw - 64px);margin:0 auto;padding:14px 12px 6
   animation:heroSweep 9s ease-in-out infinite;
 }
 @keyframes heroSweep{0%,100%{transform:translateX(-25%)}50%{transform:translateX(25%)}}
+/* MOBILE ARTIFACT FIX: this is a decorative animated "shine" sweep — a diagonal band that slides
+   back and forth across the hero via translateX. Its two outer gradient stops use the `transparent`
+   keyword, which is literally rgba(0,0,0,0) (transparent BLACK), not a transparent version of white.
+   Browsers are supposed to interpolate the alpha channel smoothly, but on many mobile GPU compositors
+   (this is a well-documented class of bug, worse on mobile than desktop because of lower-precision
+   compositing paths) that transparent-black-to-translucent-white-to-transparent-black interpolation
+   renders as a visible dark/light band instead of a smooth fade — and because the gradient is diagonal
+   (115deg) and clipped by .hero-banner's own overflow:hidden + border-radius, the visible slice of that
+   band inside the rounded box reads as a hard-edged black/white triangle, worst on narrow screens where
+   the same band width is a much larger fraction of the hero. Disabling this purely-decorative element
+   below the same 900px breakpoint already used for .hero-illustration removes the artifact at its root
+   (the animated gradient itself) without touching any real content, and leaves >=900px (desktop) pixel
+   for pixel identical to before. */
+@media (max-width:900px){.hero-banner::before{display:none}}
 .hero-particle{position:absolute;border-radius:50%;background:var(--pop);pointer-events:none;animation:heroParticle 7s ease-in-out infinite}
 .hero-particle.p1{width:5px;height:5px;top:18%;left:38%;opacity:.55;animation-delay:0s}
 .hero-particle.p2{width:3px;height:3px;top:60%;left:52%;opacity:.4;animation-delay:1.8s}
