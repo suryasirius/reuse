@@ -87,6 +87,10 @@ header .logo{
    and gives it a defined edge instead of floating directly on the page background. */
 .logo-mark img{width:34px;height:34px;object-fit:contain}
 .logo-accent{color:var(--brand)}
+/* Header brand is a real home link: keep the exact logo look, drop link underline, subtle hover/focus. */
+a.logo{text-decoration:none;cursor:pointer;border-radius:12px}
+a.logo:hover{opacity:.88}
+a.logo:focus-visible{outline:2px solid var(--brand);outline-offset:3px}
 .nav-capsule .section-tabs{background:none;border-radius:0;padding:0;display:flex;gap:24px;margin:0}
 .nav-capsule .section-tab{
   padding:0 0 3px;background:none;border:none;box-shadow:none;border-radius:0;
@@ -287,7 +291,7 @@ header nav span{color:var(--text);font-weight:600}
 .diff-impact-link:hover{background:var(--brand-dark);color:#fff}
 
 /* ---------- layout ---------- */
-main{max-width:1800px;width:calc(100vw - 64px);margin:0 auto;padding:14px 12px 60px;flex:1 0 auto}
+main{max-width:1800px;width:calc(100vw - 64px);margin:0 auto;padding:14px 12px 8px;flex:1 0 auto}
 
 .banner{
   background:#fffaf0;border:1px solid #f3e2b8;color:#7a5c0e;
@@ -1554,7 +1558,7 @@ footer{color:var(--muted);font-size:13px;padding:0;border-top:1px solid var(--bo
 @media (max-width:640px){
   header{padding:0 16px}
   .diff-strip{padding:8px 16px}
-  main{padding:18px 14px 50px}
+  main{padding:18px 14px 8px}
   .hero-banner-compact{padding:12px 16px}
   .grid{grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px}
 }

@@ -185,6 +185,7 @@ async function init() {
   bindReqTypeTabs();
   bindTopBar();
   bindBottomNav();
+  bindLogoHomeLink();
   bindMoreMenu();
   bindMobileMoreMenu();
   const mobileSearchBtn = $('#mobileSearchBtn');
@@ -1057,6 +1058,27 @@ async function openProfileSheet() {
       pushBtn.disabled = false;
     };
   }
+}
+
+// Header brand (logo + name) is a real <a href="/"> link. A plain click is intercepted to reuse the same
+// "go Home" steps as the mobile bottom-nav Home tab (close overlay page, back to the Give & Take tab,
+// scroll to top) so it works from My Posts / My Profile / modals without a full reload or logging
+// the user out. Modified clicks (ctrl/cmd/middle/shift) fall through to the normal link.
+function bindLogoHomeLink() {
+  const link = $('#logoHomeLink');
+  if (!link) return;
+  link.onclick = (e) => {
+    if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+    e.preventDefault();
+    closeModal();
+    ensureHomepageVisible();
+    const consumerTab = document.querySelector('.section-tab[data-section="consumer"]');
+    if (consumerTab && !consumerTab.classList.contains('active')) consumerTab.click();
+    setMobileView('home');
+    setBottomNavActive('home');
+    if (location.hash) history.replaceState(null, '', location.pathname + location.search);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
 }
 
 function bindBottomNav() {
