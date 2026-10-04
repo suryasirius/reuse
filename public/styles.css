@@ -2380,3 +2380,143 @@ html,body{overflow-x:hidden;max-width:100%}
 .toast-show{opacity:1;transform:translateY(0)}
 .toast-success{background:var(--brand-dark)}
 .toast-info{background:var(--accent-dark)}
+/* ==========================================================================
+   MOBILE HOMEPAGE STRUCTURE (<=600px only) — one-row header, section order, compact Champions.
+   Presentation-only: no markup is duplicated and no data/logic is touched. Everything here is
+   inside the same max-width:600px query the bottom nav and mobile layout already use, so desktop
+   (and the 601px+ tablet range) is byte-for-byte unaffected. Diagnosis that led to this block:
+     - Header wrapped to 2 rows because #nav held the bell PLUS the wide "Hi, <name> v" user chip,
+       which could not fit beside logo + search + more on one line.
+     - Business Surplus preview and the Requests strips were rendered but sat far down the DOM
+       (after Champions); Requests renders nothing when there are zero requests (existing logic).
+     - Section spacing doubled up: the flex gap on <main> PLUS each section's own desktop
+       margin-bottom (24px/20px/16px).
+   ========================================================================== */
+@media (max-width:600px){
+  /* ---- 1. Compact single-row header: [menu] [logo] ...... [search] [bell] [avatar] ---- */
+  header{padding:0 14px}
+  .nav-capsule,
+  header.scrolled .nav-capsule{
+    flex-direction:row;flex-wrap:wrap;align-items:center;gap:8px;row-gap:0;
+    min-height:56px;padding:8px 0;
+  }
+  #mobileMoreBtn{order:1}
+  .logo-wrap{order:2;flex-shrink:0}
+  #mobileSearchBtn{order:3;margin-left:auto}
+  #nav{order:4;margin-left:0;width:auto;flex-shrink:0;flex-wrap:nowrap;gap:8px}
+  #mobileMoreBtn,#mobileSearchBtn{width:40px;height:40px}
+  header nav .notif-btn{width:40px;height:40px}
+  /* Name + chevron dropped from the chip on mobile (avatar only) — the avatar still opens the same
+     full account dropdown, so My Profile / Saved / Impact / Password / Blocked users all remain
+     reachable; the username text was what forced the second header row. */
+  header nav .user-chip{width:40px;height:40px;padding:0;gap:0;justify-content:center;border-radius:50%}
+  .user-chip .user-chip-label,.user-chip [data-lucide]{display:none}
+  .user-chip .user-avatar{width:34px;height:34px}
+  /* Logged-out: Log in + Sign up need the room, and the search shortcut just scrolls to the hero
+     search that is directly below anyway. */
+  .capsule-actions:has(#loginBtn) #mobileSearchBtn{display:none}
+  .capsule-actions:has(#loginBtn) #nav{margin-left:auto}
+  #loginBtn,#signupBtn{height:36px;padding:0 12px;font-size:13px}
+
+  /* ---- 2. Section order (CSS-only; <main> is already a flex column at this width). Target:
+     nearby -> hero/search -> Food Rescue -> Requests -> Business Surplus -> Trending ->
+     Collections -> Champions -> stats/community/trust. Browse/Requests tabs keep their own relative
+     order (sidebar/grid come last, reqTypeTabs right after the hero). ---- */
+  #nearbySection{order:1}
+  .hero-banner{order:2}
+  #foodRescueHeroSection{order:3}
+  #reqTypeTabs{order:3}
+  #businessSurplusIntro{order:3}
+  #urgentSection{order:4}
+  #serviceRequestsSection{order:5}
+  #businessTeaserPreviewSection{order:6}
+  #trendingSection{order:7}
+  #collectionsSection{order:8}
+  #championsSection{order:9}
+  .sidebar,.main-col{order:10}
+  #statsStrip{order:12}
+  #communitySection{order:13}
+  #businessTeaserSection{order:14}
+  .trust-strip{order:15}
+  #myPostsPage,#myProfilePage{order:20}
+
+  /* ---- 3. Spacing: <main>'s own 16px flex gap is the single section spacer now; the desktop
+     per-section bottom margins were stacking on top of it (up to 40px gaps). ---- */
+  .nearby-strip,.food-rescue-hero,.trending-wrap,.highlight-wrap,.homepage-section,.stats-strip{margin-bottom:0}
+  .nearby-strip{gap:8px;padding:8px 12px}
+  .food-rescue-hero{padding:12px}
+  .food-rescue-hero-head{margin-bottom:10px}
+
+  /* Trending: compact swipeable row instead of a tall 2-column grid with desktop-sized padding. */
+  .trending-wrap h2{font-size:17px}
+  .trending-wrap .grid{display:flex;gap:10px;overflow-x:auto;scroll-snap-type:x proximity;padding-bottom:4px}
+  .trending-wrap .card{flex:0 0 150px;min-width:0;padding:8px;scroll-snap-align:start}
+  .trending-wrap .card .thumb{margin-bottom:8px}
+
+  /* ---- 4. Monthly Champions: same data, ~60% shorter. Hides the description line, decorative
+     emoji, rank medal, motivational footer bar and sparkles; each champion becomes a slim row. ---- */
+  .champions-section{padding:0}
+  .champions-top{flex-direction:row;align-items:center;justify-content:space-between;flex-wrap:nowrap;gap:8px;margin-bottom:10px}
+  .champions-head-row{align-items:center;gap:8px}
+  .champions-sparkle{display:none}
+  .champions-sub{display:none}
+  .champions-head{font-size:15px}
+  .champions-month{padding:4px 10px;font-size:10.5px}
+  .champions-grid{gap:6px}
+  .champion-box{padding:10px 12px;border-radius:14px;box-shadow:none;gap:4px}
+  .champion-box:hover{transform:none;box-shadow:none}
+  .champion-topline{margin:0}
+  .champion-label-pill{padding:3px 9px;font-size:9.5px}
+  .champion-rank,.champion-illustration,.champion-footer,.champion-sub,.champion-stat-icon{display:none}
+  .champion-main{display:block}
+  .champion-text{display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%}
+  .champion-name{font-size:14px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .champion-stat{margin:0;flex-shrink:0}
+  .champion-stat > div{display:flex;align-items:baseline;gap:4px}
+  .champion-stat strong{display:inline;font-size:14px}
+  .champion-stat small{font-size:10.5px}
+  .champions-view-all-wrap{margin-top:10px}
+  .champions-view-all{padding:10px 18px;font-size:13px}
+}
+
+/* ---- Mobile homepage structure, refinements pass (<=600px): remove stray gaps, tighten the hero
+   search card, compact the preview strips. Still presentation-only and mobile-only. ---- */
+@media (max-width:600px){
+  /* An empty #verifyBanner is still a flex child, so it was adding a phantom 16px gap under the header. */
+  #verifyBanner:empty{display:none}
+
+  /* Hero search: same controls, same handlers — Filters + Search share one row and the lone search
+     glyph (which sat by itself on its own row in the stacked layout) is dropped. ~30% shorter card. */
+  .hero-search-wrap .searchbar{display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:10px}
+  .hero-search-wrap .searchbar .searchbar-icon{display:none}
+  .hero-search-wrap .searchbar #search,
+  .hero-search-wrap .searchbar #locationFilter,
+  .hero-search-wrap .searchbar #priceFilter{grid-column:1 / -1}
+  .hero-search-wrap .searchbar input,
+  .hero-search-wrap .searchbar select{padding:10px 14px}
+  .hero-popular-row{margin-top:10px}
+
+  /* Request / Services / Business Surplus preview strips: heading left-aligned (View all pinned right)
+     and smaller swipeable cards instead of 230px-wide / 150px-tall desktop-sized ones. */
+  .highlight-wrap{padding:12px}
+  .highlight-wrap h2{font-size:17px;justify-content:flex-start}
+  .highlight-wrap h2 .view-all-link{margin-left:auto}
+  .highlight-wrap .highlight-sub{margin-bottom:10px}
+  .hscroll{gap:10px}
+  .hscroll .card{min-width:170px;max-width:170px;flex:0 0 170px}
+  .highlight-wrap .card .thumb{height:104px}
+
+  /* Trending filter tabs: one swipeable row instead of wrapping onto 3 lines. */
+  .trend-tabs{flex-wrap:nowrap;overflow-x:auto;margin-bottom:10px;scrollbar-width:none}
+  .trend-tabs::-webkit-scrollbar{display:none}
+  .trend-tab{flex-shrink:0;white-space:nowrap}
+}
+
+/* Popular Collections (mobile): the 8 fixed category cards stacked one per row made this section
+   ~1,700px tall and pushed everything after it (Champions, community, trust) far down. Same cards,
+   same markup/thumbnails/counts — just laid out as one swipeable row inside the section. */
+@media (max-width:600px){
+  .collections-grid{display:flex;gap:10px;overflow-x:auto;scroll-snap-type:x proximity;padding-bottom:6px;scrollbar-width:none}
+  .collections-grid::-webkit-scrollbar{display:none}
+  .collections-grid .collection-card{flex:0 0 250px;min-width:0;scroll-snap-align:start}
+}
