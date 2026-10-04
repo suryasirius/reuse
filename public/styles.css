@@ -2520,3 +2520,18 @@ html,body{overflow-x:hidden;max-width:100%}
   .collections-grid::-webkit-scrollbar{display:none}
   .collections-grid .collection-card{flex:0 0 250px;min-width:0;scroll-snap-align:start}
 }
+
+/* ---- Mobile account menu (<=600px only): compact, always on-screen, scrolls internally on short
+   screens. Same markup/handlers/terminology; desktop dropdown untouched. ---- */
+@media (max-width:600px){
+  .user-menu-dropdown{
+    width:min(280px,calc(100vw - 24px));min-width:0;max-height:calc(100vh - 150px);max-height:calc(100dvh - 150px);
+    overflow-y:auto;overscroll-behavior:contain;padding:4px;gap:0;
+  }
+  .user-menu-header{padding:8px 10px}
+  .user-menu-group{padding-top:2px}
+  .user-menu-group-label{padding:6px 10px 2px}
+  .user-menu-dropdown button{min-height:40px;padding:6px 10px}
+  .user-menu-divider{margin:2px 0}
+  .user-chip:focus-visible,#mobileMoreBtn:focus-visible,#mobileSearchBtn:focus-visible,.notif-btn:focus-visible{outline:2px solid var(--brand);outline-offset:2px}
+}

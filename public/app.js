@@ -1262,7 +1262,7 @@ function renderNav() {
         <div class="notif-panel" id="notifPanel" style="display:none"></div>
       </div>
       <div class="user-menu-wrap" id="userMenuWrap">
-        <button type="button" class="user-chip" id="userChipBtn" aria-haspopup="true" aria-expanded="false">
+        <button type="button" class="user-chip" id="userChipBtn" aria-label="Account menu" aria-haspopup="true" aria-expanded="false">
           <span class="user-avatar">${initial}</span>
           <span class="user-chip-label">Hi, ${escapeHtml(state.user.name)}${state.user.account_type === 'business' ? ' 🏢' : ''}</span>
           <i data-lucide="chevron-down"></i>
