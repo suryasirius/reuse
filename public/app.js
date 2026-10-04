@@ -3670,7 +3670,6 @@ async function openImpactModal() {
     <div class="impact-stat"><div class="num">${stats.verified_users}</div><div class="label">Verified users</div></div>
     <div class="impact-stat"><div class="num">${stats.completed_requests}</div><div class="label">Completed requests</div></div>
     <div class="impact-stat"><div class="num">${stats.reused_items}</div><div class="label">Items reused</div></div>
-    <div class="impact-stat"><div class="num">${stats.waste_diverted_listings}</div><div class="label">Waste diverted (listings)</div></div>
     <div class="impact-stat"><div class="num">${stats.avg_response_hours != null ? stats.avg_response_hours + 'h' : '—'}</div><div class="label">Avg. response time</div></div>
     <div class="impact-stat"><div class="num">${stats.repeat_users}</div><div class="label">Repeat users</div></div>
   </div>`;
