@@ -192,16 +192,16 @@ header nav span{color:var(--text);font-weight:600}
 .more-menu-btn [data-lucide]{width:16px;height:16px;flex-shrink:0;transition:transform .15s var(--ease)}
 .more-menu-btn[aria-expanded="true"] [data-lucide]{transform:rotate(180deg)}
 .more-menu-dropdown{
-  display:none;position:absolute;top:calc(100% + 10px);right:0;width:580px;max-width:calc(100vw - 48px);z-index:40;
+  display:none;position:absolute;top:calc(100% + 10px);right:0;width:540px;max-width:calc(100vw - 48px);z-index:40;
   background:#fff;border:1px solid var(--border-soft);border-radius:16px;box-shadow:var(--shadow-lg);
-  padding:18px;flex-direction:column;gap:14px;max-height:80vh;overflow-y:auto;
+  padding:16px;flex-direction:column;gap:12px;max-height:80vh;overflow-y:auto;
 }
 .more-menu-dropdown.open{display:flex}
 /* Two-column grouped layout (Discover/Community left+right on row 1, Business/About left+right
    on row 2), matching the header design reference. Shared markup (moreMenuItemsHtml() in app.js)
    between this desktop dropdown and the mobile bottom-sheet #mobileMoreList — the mobile sheet
    overrides back to a single column (see the mobile media query). */
-.more-menu-groups{display:grid;grid-template-columns:1fr 1fr;gap:20px 28px}
+.more-menu-groups{display:grid;grid-template-columns:1fr 1fr;gap:18px 24px}
 .more-menu-group{display:flex;flex-direction:column;gap:2px}
 .more-menu-group-label{
   font-size:10.5px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--muted-2);
@@ -212,6 +212,9 @@ header nav span{color:var(--text);font-weight:600}
   padding:9px 8px;border-radius:10px;font-size:13.5px;font-weight:600;color:var(--text);cursor:pointer;
   height:auto;width:100%;
 }
+/* Desktop dropdown only (the mobile sheet shares the rules above): slightly tighter rows. */
+.more-menu-dropdown button{padding:8px 8px}
+.more-menu-dropdown .more-menu-group-label{padding-bottom:4px}
 .more-menu-dropdown button:hover, .more-menu-list button:hover{background:var(--brand-softer);color:var(--brand-dark);transform:none;box-shadow:none}
 .more-menu-dropdown button [data-lucide], .more-menu-list button [data-lucide]{width:16px;height:16px;color:var(--muted);flex-shrink:0}
 .more-menu-dropdown .new-badge, .more-menu-list .new-badge{margin-left:auto}
