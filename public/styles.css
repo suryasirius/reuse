@@ -2297,6 +2297,9 @@ html,body{overflow-x:hidden;max-width:100%}
 .my-posts-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:18px}
 
 .my-post-card{cursor:default}
+/* LOC_SVG has no intrinsic size and was only sized inside .footer-bar .loc; in My Posts it sits in
+   .meta, so it stretched to the full card width. Size it like the other cards' location icon. */
+.my-post-card .meta svg{width:13px;height:13px;stroke:var(--brand);flex-shrink:0}
 .my-post-card:hover{transform:none}
 .my-post-card .thumb{margin-bottom:12px}
 .my-post-status-row{margin:2px 0 10px}
