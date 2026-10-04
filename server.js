@@ -629,6 +629,15 @@ app.use('/uploads', express.static(uploadDir, {
     res.setHeader('Content-Disposition', 'inline');
   }
 }));
+// Android app (Trusted Web Activity) domain verification. express.static ignores dot-directories
+// by default, so /.well-known/assetlinks.json would 404 without this explicit mount. The file lives
+// in public/.well-known/ and is edited later (paste the SHA-256 signing fingerprint from Google Play
+// Console) — a plain git pull is enough after that, no restart. Scoped to this one directory so no
+// other dotfile in public/ becomes reachable.
+app.use('/.well-known', express.static(path.join(__dirname, 'public', '.well-known'), {
+  dotfiles: 'allow',
+  setHeaders: (res) => { res.setHeader('Content-Type', 'application/json; charset=utf-8'); }
+}));
 app.use(express.static(path.join(__dirname, 'public')));
 
 // Canonical consumer-category order (single source of truth — drives the sidebar, Post/Edit Item
