@@ -2602,7 +2602,7 @@ function openPostModal(options) {
         <label>Title <span class="req">*</span></label>
         <input name="title" required maxlength="120" id="postTitle" placeholder="${foodRescue ? 'e.g. Wedding Biryani (Veg), serves 40' : isBusiness ? 'e.g. 20 office chairs, CNC metal scrap' : 'e.g. Old iPhone 8, working condition'}">
 
-        <label>Photos <span class="hint-inline">Optional · Up to 5 photos</span></label>
+        <label>Photos <span class="hint-inline">Optional · Up to 4 photos</span></label>
         <div class="photo-dropzone" id="photoDropzone" tabindex="0" role="button" aria-label="Upload photos">
           <span class="photo-dropzone-icon">📷</span>
           <span class="photo-dropzone-text"><strong>Upload photos</strong><br>or drag and drop</span>
@@ -2700,7 +2700,7 @@ function openPostModal(options) {
   setupPhotoPicker({
     input: $('#mediaInput'), dropzone: $('#photoDropzone'), thumbsEl: $('#photoThumbs'),
     cameraBtn: $('#photoCameraBtn'), cameraInput: $('#photoCameraInput'), errorEl: $('#postError'),
-    getMax: () => 5
+    getMax: () => 4
   });
   const priceExtra = $('#priceExtra');
   const updatePriceExtra = () => {
@@ -3120,7 +3120,7 @@ function openEditModal(item) {
       </select>
       <div id="editPriceExtra"></div>
       ${pickupFieldsHtml(item)}
-      <label>Photos <span class="hint-inline">Up to 5 total</span></label>
+      <label>Photos <span class="hint-inline">Up to 4 total</span></label>
       <div class="photo-thumbs" id="editExistingThumbs">${existingPhotos.map(m => `
         <div class="photo-thumb" data-media-id="${m.id}">
           <img src="${escapeHtml(m.thumb_url || m.url)}" alt="">
@@ -3157,7 +3157,7 @@ function openEditModal(item) {
   setupPhotoPicker({
     input: editMediaInput, dropzone: $('#editPhotoDropzone'), thumbsEl: $('#editNewThumbs'),
     cameraBtn: $('#editCameraBtn'), cameraInput: $('#editCameraInput'), errorEl: $('#editError'),
-    getMax: () => Math.max(0, 5 - document.querySelectorAll('#editExistingThumbs .photo-thumb').length - (item.pending_media_count || 0))
+    getMax: () => Math.max(0, 4 - document.querySelectorAll('#editExistingThumbs .photo-thumb').length - (item.pending_media_count || 0))
   });
 
   const editPriceExtra = $('#editPriceExtra');

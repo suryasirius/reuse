@@ -237,7 +237,7 @@ const ALLOWED_IMAGE_TYPES = {
   'image/webp': { ext: '.webp', magic: [[0x52, 0x49, 0x46, 0x46]] } // 'RIFF'; full WEBP check below
 };
 const MAX_UPLOAD_FILE_BYTES = 8 * 1024 * 1024; // 8MB — generous for a photo, not for arbitrary junk
-const MAX_UPLOAD_FILES = 5;
+const MAX_UPLOAD_FILES = 4; // max photos per listing / per upload
 
 const storage = multer.diskStorage({
   // Image Moderation V1: files always land in quarantine first, never directly in the public
