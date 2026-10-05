@@ -1295,6 +1295,10 @@ form button[disabled], .primary-btn[disabled]{opacity:.6;cursor:not-allowed;tran
   display:flex;align-items:center;justify-content:center;padding:0;
 }
 .photo-thumb-remove:hover{background:#c0392b}
+/* Camera button: touch devices only (on desktop "capture" is ignored, so it would just duplicate the file picker). */
+.photo-camera-btn{display:none;margin-top:8px;min-height:44px;width:100%;align-items:center;justify-content:center;gap:6px}
+@media (pointer:coarse){.photo-camera-btn{display:inline-flex}}
+.photo-thumb-remove{width:22px;height:22px}
 
 .visually-hidden-select{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0;padding:0;margin:-1px}
 .offer-type-cards{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-top:6px}

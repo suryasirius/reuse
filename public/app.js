@@ -167,7 +167,7 @@ async function api(url, opts = {}) {
       renderNav();
       alert(data.error);
     }
-    throw new Error(data.error || 'Request failed');
+    throw new Error(data.error || (res.status === 413 ? 'Your photos are too large to upload at once — try fewer or smaller photos' : 'Request failed'));
   }
   return data;
 }
@@ -2508,6 +2508,86 @@ const FOOD_PREF_OPTIONS = [
 // donor lands straight on the pickup-deadline/urgent fields instead of having to find "Food" among
 // ~15 categories themselves, and swaps the heading/placeholder copy to match what they came here
 // to do.
+// ---------- shared photo picker (post + edit forms) ----------
+// Root cause this fixes: a plain <input type="file" multiple> REPLACES its selection every time the
+// picker is reopened, so adding photos one at a time (always the case with the camera, which returns
+// a single shot) silently dropped the earlier photos, and nothing let the user remove one. This keeps
+// our own list of Files and mirrors it back into the real <input> via DataTransfer, so the existing
+// FormData(form) submit code and the server's upload.array('media') keep working unchanged.
+const PHOTO_MAX_BYTES = 8 * 1024 * 1024;          // must match MAX_UPLOAD_FILE_BYTES on the server
+const PHOTO_TYPES = ['image/jpeg', 'image/png', 'image/webp'];   // must match ALLOWED_IMAGE_TYPES on the server
+async function shrinkPhoto(file) {
+  // Phone cameras (esp. 48/50MP) can exceed 8MB. Re-encode as a smaller JPEG in the browser rather than
+  // letting the whole post fail. Server-side type/size/magic-byte/moderation checks still run on the result.
+  try {
+    const bmp = await createImageBitmap(file, { imageOrientation: 'from-image' });
+    const scale = Math.min(1, 2560 / Math.max(bmp.width, bmp.height));
+    const c = document.createElement('canvas');
+    c.width = Math.round(bmp.width * scale); c.height = Math.round(bmp.height * scale);
+    const ctx = c.getContext('2d');
+    ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, c.width, c.height);
+    ctx.drawImage(bmp, 0, 0, c.width, c.height);
+    if (bmp.close) bmp.close();
+    const blob = await new Promise(r => c.toBlob(r, 'image/jpeg', 0.85));
+    if (!blob) return null;
+    return new File([blob], file.name.replace(/\.[^.]+$/, '') + '.jpg', { type: 'image/jpeg', lastModified: file.lastModified });
+  } catch { return null; }
+}
+function setupPhotoPicker({ input, dropzone, thumbsEl, cameraBtn, cameraInput, errorEl, getMax }) {
+  let files = [];
+  let urls = [];
+  const keyOf = f => f.name + '|' + f.size + '|' + f.lastModified;
+  const say = (msg) => { if (errorEl) errorEl.textContent = msg || ''; };
+  function render() {
+    urls.forEach(u => URL.revokeObjectURL(u)); urls = [];
+    thumbsEl.innerHTML = '';
+    files.forEach((file, i) => {
+      const url = URL.createObjectURL(file); urls.push(url);
+      const thumb = document.createElement('div');
+      thumb.className = 'photo-thumb';
+      thumb.title = file.name;
+      thumb.innerHTML = `<img src="${url}" alt=""><button type="button" class="photo-thumb-remove" aria-label="Remove photo">×</button>`;
+      thumb.querySelector('button').onclick = (e) => { e.stopPropagation(); files.splice(i, 1); say(''); sync(); };
+      thumbsEl.appendChild(thumb);
+    });
+  }
+  function sync() {
+    try {
+      const dt = new DataTransfer();
+      files.forEach(f => dt.items.add(f));
+      input.files = dt.files;
+    } catch { /* very old browser: falls back to the native single-selection behaviour */ }
+    render();
+  }
+  async function add(list) {
+    const notes = [];
+    for (const f of Array.from(list || [])) {
+      if (files.length >= getMax()) { notes.push(`Photo limit reached — only ${getMax()} photo${getMax() === 1 ? '' : 's'} allowed here, extra photos were skipped.`); break; }
+      if (!PHOTO_TYPES.includes(f.type)) { notes.push(`"${f.name}" is not a JPEG, PNG or WebP photo.`); continue; }
+      if (files.some(x => keyOf(x) === keyOf(f))) continue;
+      let use = f;
+      if (f.size > PHOTO_MAX_BYTES) {
+        use = await shrinkPhoto(f);
+        if (!use || use.size > PHOTO_MAX_BYTES) { notes.push(`"${f.name}" is too large (max 8MB per photo).`); continue; }
+      }
+      files.push(use);
+    }
+    say(notes.join(' '));
+    sync();
+  }
+  dropzone.onclick = () => input.click();
+  dropzone.onkeydown = (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); input.click(); } };
+  input.onchange = () => add(input.files);
+  ['dragover', 'dragenter'].forEach(evt => dropzone.addEventListener(evt, (e) => { e.preventDefault(); dropzone.classList.add('dragover'); }));
+  ['dragleave', 'dragend', 'drop'].forEach(evt => dropzone.addEventListener(evt, (e) => { e.preventDefault(); dropzone.classList.remove('dragover'); }));
+  dropzone.addEventListener('drop', (e) => { if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length) add(e.dataTransfer.files); });
+  if (cameraBtn && cameraInput) {
+    cameraBtn.onclick = () => cameraInput.click();
+    cameraInput.onchange = async () => { await add(cameraInput.files); cameraInput.value = ''; };
+  }
+  return { count: () => files.length };
+}
+
 function openPostModal(options) {
   const foodRescue = !!(options && options.foodRescue);
   const isBusiness = state.section === 'business_waste';
@@ -2526,8 +2606,10 @@ function openPostModal(options) {
         <div class="photo-dropzone" id="photoDropzone" tabindex="0" role="button" aria-label="Upload photos">
           <span class="photo-dropzone-icon">📷</span>
           <span class="photo-dropzone-text"><strong>Upload photos</strong><br>or drag and drop</span>
-          <input type="file" name="media" id="mediaInput" accept="image/*,video/*" multiple class="photo-input-hidden">
+          <input type="file" name="media" id="mediaInput" accept="image/jpeg,image/png,image/webp,image/*" multiple class="photo-input-hidden">
         </div>
+        <button type="button" class="ghost photo-camera-btn" id="photoCameraBtn">📸 Take a photo</button>
+        <input type="file" id="photoCameraInput" accept="image/*" capture="environment" class="photo-input-hidden">
         <div class="photo-thumbs" id="photoThumbs"></div>
         <p class="hint">Good photos = more chances to find the right person.</p>
 
@@ -2615,35 +2697,10 @@ function openPostModal(options) {
 
   // ---------- photo dropzone (reuses the existing #mediaInput file input — same name, same
   // validation, same 5-file/8MB server-side limits; this only adds a preview, no new upload path) ----------
-  const mediaInput = $('#mediaInput');
-  const dropzone = $('#photoDropzone');
-  const photoThumbs = $('#photoThumbs');
-  function renderPhotoThumbs() {
-    const files = Array.from(mediaInput.files || []);
-    photoThumbs.innerHTML = '';
-    files.forEach((file, i) => {
-      const thumb = document.createElement('div');
-      thumb.className = 'photo-thumb';
-      if (file.type.startsWith('image/')) {
-        const url = URL.createObjectURL(file);
-        thumb.innerHTML = `<img src="${url}" alt="">`;
-      } else {
-        thumb.innerHTML = `<span class="photo-thumb-file">🎞️</span>`;
-      }
-      thumb.title = file.name;
-      photoThumbs.appendChild(thumb);
-    });
-  }
-  dropzone.onclick = () => mediaInput.click();
-  dropzone.onkeydown = (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); mediaInput.click(); } };
-  mediaInput.onchange = renderPhotoThumbs;
-  ['dragover', 'dragenter'].forEach(evt => dropzone.addEventListener(evt, (e) => { e.preventDefault(); dropzone.classList.add('dragover'); }));
-  ['dragleave', 'dragend', 'drop'].forEach(evt => dropzone.addEventListener(evt, (e) => { e.preventDefault(); dropzone.classList.remove('dragover'); }));
-  dropzone.addEventListener('drop', (e) => {
-    if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length) {
-      mediaInput.files = e.dataTransfer.files; // same input, same field — just populated via drop
-      renderPhotoThumbs();
-    }
+  setupPhotoPicker({
+    input: $('#mediaInput'), dropzone: $('#photoDropzone'), thumbsEl: $('#photoThumbs'),
+    cameraBtn: $('#photoCameraBtn'), cameraInput: $('#photoCameraInput'), errorEl: $('#postError'),
+    getMax: () => 5
   });
   const priceExtra = $('#priceExtra');
   const updatePriceExtra = () => {
@@ -3073,8 +3130,10 @@ function openEditModal(item) {
       <div class="photo-dropzone" id="editPhotoDropzone" tabindex="0" role="button" aria-label="Add photos">
         <span class="photo-dropzone-icon">📷</span>
         <span class="photo-dropzone-text"><strong>Add photos</strong><br>or drag and drop</span>
-        <input type="file" name="media" id="editMediaInput" accept="image/*" multiple class="photo-input-hidden">
+        <input type="file" name="media" id="editMediaInput" accept="image/jpeg,image/png,image/webp,image/*" multiple class="photo-input-hidden">
       </div>
+      <button type="button" class="ghost photo-camera-btn" id="editCameraBtn">📸 Take a photo</button>
+      <input type="file" id="editCameraInput" accept="image/*" capture="environment" class="photo-input-hidden">
       <div class="photo-thumbs" id="editNewThumbs"></div>
       <div class="error" id="editError"></div>
       <button class="primary-btn" type="submit">Save changes</button>
@@ -3095,29 +3154,10 @@ function openEditModal(item) {
   // New-photo dropzone — same pattern as the post-item form's #mediaInput/#photoThumbs (preview
   // only; the actual upload+moderation happens server-side on submit).
   const editMediaInput = $('#editMediaInput');
-  const editDropzone = $('#editPhotoDropzone');
-  const editNewThumbs = $('#editNewThumbs');
-  function renderEditNewThumbs() {
-    const files = Array.from(editMediaInput.files || []);
-    editNewThumbs.innerHTML = '';
-    files.forEach(file => {
-      const thumb = document.createElement('div');
-      thumb.className = 'photo-thumb';
-      thumb.innerHTML = `<img src="${URL.createObjectURL(file)}" alt="">`;
-      thumb.title = file.name;
-      editNewThumbs.appendChild(thumb);
-    });
-  }
-  editDropzone.onclick = () => editMediaInput.click();
-  editDropzone.onkeydown = (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); editMediaInput.click(); } };
-  editMediaInput.onchange = renderEditNewThumbs;
-  ['dragover', 'dragenter'].forEach(evt => editDropzone.addEventListener(evt, (e) => { e.preventDefault(); editDropzone.classList.add('dragover'); }));
-  ['dragleave', 'dragend', 'drop'].forEach(evt => editDropzone.addEventListener(evt, (e) => { e.preventDefault(); editDropzone.classList.remove('dragover'); }));
-  editDropzone.addEventListener('drop', (e) => {
-    if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length) {
-      editMediaInput.files = e.dataTransfer.files;
-      renderEditNewThumbs();
-    }
+  setupPhotoPicker({
+    input: editMediaInput, dropzone: $('#editPhotoDropzone'), thumbsEl: $('#editNewThumbs'),
+    cameraBtn: $('#editCameraBtn'), cameraInput: $('#editCameraInput'), errorEl: $('#editError'),
+    getMax: () => Math.max(0, 5 - document.querySelectorAll('#editExistingThumbs .photo-thumb').length - (item.pending_media_count || 0))
   });
 
   const editPriceExtra = $('#editPriceExtra');
