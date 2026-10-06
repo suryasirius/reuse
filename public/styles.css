@@ -2575,3 +2575,53 @@ html,body{overflow-x:hidden;max-width:100%}
 .loc-suggest-item:hover,.loc-suggest-item.active{background:var(--brand-light)}
 .loc-suggest-label{min-width:0;overflow-wrap:anywhere}
 .loc-suggest-note{padding:10px 12px;font-size:13px;color:var(--muted)}
+
+/* ================= Feature-card accent system (visual only) =================
+   Soft light surfaces + one restrained accent each (~90% neutral / ~10% accent):
+   green = Give & Take / collections, orange = Food Rescue, purple = Business Surplus,
+   amber = Requests. Scoped to the feature panels only — listing cards (.card) untouched. */
+.food-rescue-hero{
+  background:linear-gradient(160deg,#fff 0%,#FFF5EE 100%);border:1px solid #F9DCC8;border-radius:20px;
+  box-shadow:0 1px 2px rgba(20,30,20,.04),0 6px 18px rgba(224,122,43,.07);
+}
+.food-rescue-hero-icon{background:#FFE8D6;border:1px solid #F6CBA8;box-shadow:none}
+@media (min-width:601px){.food-rescue-hero-icon{width:48px;height:48px;font-size:24px}}
+@media (max-width:600px){.food-rescue-hero-icon{width:36px;height:36px;font-size:18px}}
+
+.highlight-wrap.hl-urgent,.highlight-wrap.hl-service{
+  background:linear-gradient(160deg,#fff 0%,#FFF9EA 100%);border-color:#F3E4B8;border-radius:20px;
+  box-shadow:0 1px 2px rgba(20,30,20,.04),0 6px 18px rgba(184,134,11,.07);
+}
+.highlight-wrap.hl-urgent .section-icon,.highlight-wrap.hl-service .section-icon{background:#FDEFC4;color:#9A6400}
+
+.collection-card{
+  background:linear-gradient(160deg,#fff 0%,#F4FAF6 100%);border:1px solid #E1EFE5;border-radius:20px;padding:16px;
+  box-shadow:0 1px 2px rgba(20,30,20,.04),0 4px 14px rgba(23,138,75,.06);
+}
+.collection-card-icon{width:40px;height:40px;border-radius:12px;background:#E3F3E8;display:flex;align-items:center;justify-content:center;font-size:21px}
+.collection-card h3{font-weight:800}
+
+.quick-action-card{
+  background:linear-gradient(160deg,#fff 0%,#F4FAF6 100%);border-color:#E1EFE5;border-radius:18px;
+  box-shadow:0 1px 2px rgba(20,30,20,.04),0 4px 12px rgba(23,138,75,.06);
+}
+.quick-action-card .quick-action-icon{width:40px;height:40px;border-radius:12px;background:#E3F3E8;color:var(--brand-dark)}
+.quick-action-card + .quick-action-card{
+  background:linear-gradient(160deg,#fff 0%,#FFF9EA 100%);border-color:#F3E4B8;
+  box-shadow:0 1px 2px rgba(20,30,20,.04),0 4px 12px rgba(184,134,11,.07);
+}
+.quick-action-card + .quick-action-card .quick-action-icon{background:#FDEFC4;color:#9A6400}
+
+.business-teaser{
+  background:linear-gradient(160deg,#fff 0%,#F5F1FD 100%);border:1px solid #E3DAF6;border-radius:20px;color:var(--text);
+  box-shadow:0 1px 2px rgba(20,30,20,.04),0 6px 18px rgba(106,79,199,.08);
+}
+.business-teaser h2{color:var(--text)}
+.business-teaser h2 .section-icon{background:#EADFFB;color:#6A4FC7}
+.business-teaser p{color:var(--meta)}
+.business-teaser .btn-light{background:#6A4FC7;color:#fff}
+.business-teaser-art svg rect{fill:#E8DFFA}
+.business-teaser-art svg path:first-of-type{stroke:#B9A5E8}
+.business-teaser-art svg path:last-of-type{stroke:#C9BAEF}
+.business-teaser-art svg line{stroke:#CDBFF0}
+.business-teaser-art svg circle{stroke:#6A4FC7}
