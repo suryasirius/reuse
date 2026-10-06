@@ -2643,3 +2643,55 @@ html,body{overflow-x:hidden;max-width:100%}
   main{gap:20px}
   .section-head h2,.content-title,.champions-head{font-size:17px}
 }
+
+/* ================= Hero search & filter polish (visual only) =================
+   One cohesive white search surface: segmented controls with thin dividers, a quiet Filters button,
+   a clearly primary Search button, and pill-style Popular chips. Selectors/ids/handlers untouched. */
+.nearby-strip{border-radius:20px}
+.hero-search-wrap .searchbar{border-radius:20px}
+.hero-search-wrap .searchbar:focus-within{box-shadow:0 0 0 3px rgba(255,255,255,.55),0 14px 34px rgba(0,0,0,.22)}
+.hero-popular-row{gap:8px;margin-top:12px}
+.hero-popular-label{margin-right:2px}
+.hero-popular-link{
+  background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.18);
+  padding:5px 12px;border-radius:999px;font-size:12.5px;
+}
+.hero-popular-link:hover{background:rgba(255,255,255,.2);color:#fff;text-decoration:none}
+
+@media (min-width:900px){
+  .hero-search-wrap .searchbar{flex-wrap:nowrap;gap:0;min-height:64px;padding:8px 8px 8px 20px}
+  .hero-search-wrap .searchbar .searchbar-icon{margin-right:6px}
+  .hero-search-wrap .searchbar #search{flex:1 1 auto;min-width:0;padding:12px}
+  .hero-search-wrap .searchbar #locationFilter{
+    flex:0 0 220px;max-width:220px !important;padding:12px 14px;border-radius:0;border-left:1px solid var(--border);
+  }
+  .hero-search-wrap .searchbar #priceFilter{
+    flex:0 0 auto;border:none;border-left:1px solid var(--border);border-radius:0;
+    padding:12px 12px;background:transparent;color:var(--meta);font-size:14px;cursor:pointer;
+  }
+  .hero-search-wrap .searchbar .filters-btn{height:44px;border-radius:12px;margin-left:8px}
+  .hero-search-wrap .searchbar .hero-search-btn{height:44px;padding:0 24px;border-radius:14px;font-size:14px;margin-left:8px}
+}
+
+@media (max-width:600px){
+  .hero-search-wrap .searchbar{border-radius:18px;padding:10px;gap:8px}
+  .hero-search-wrap .searchbar input,
+  .hero-search-wrap .searchbar select{
+    height:46px;padding:0 14px;border:1px solid var(--border);border-radius:12px;
+    background:var(--brand-softer);font-size:15px;
+  }
+  .hero-search-wrap .searchbar .filters-btn{height:46px;border-radius:12px}
+  .hero-search-wrap .searchbar .hero-search-btn{height:46px;border-radius:12px;font-size:14.5px}
+  .hero-popular-row{flex-wrap:nowrap;overflow-x:auto;gap:8px;margin-top:10px;scrollbar-width:none}
+  .hero-popular-row::-webkit-scrollbar{display:none}
+  .hero-popular-row > *{flex-shrink:0;white-space:nowrap}
+  .hero-popular-label{width:auto;margin:0 2px 0 0}
+  /* Single swipeable row: gutter after the last chip, snap so a swipe settles on a whole chip, and a
+     soft fade on the right edge so a partly-visible chip reads as "more to scroll" rather than clipped. */
+  .hero-popular-row{
+    padding-right:18px;scroll-snap-type:x proximity;scroll-padding:0 18px;
+    -webkit-mask-image:linear-gradient(90deg,#000 calc(100% - 28px),transparent);
+            mask-image:linear-gradient(90deg,#000 calc(100% - 28px),transparent);
+  }
+  .hero-popular-row > *{scroll-snap-align:start}
+}
