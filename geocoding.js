@@ -86,14 +86,33 @@ function publicLocationFromProperties(p) {
   if (!p) return null;
   const clean = v => (typeof v === 'string' ? v.trim() : '');
   const area = clean(p.suburb) || clean(p.neighbourhood) || clean(p.quarter);
-  const place = clean(p.city) || clean(p.town) || clean(p.village) || clean(p.municipality) || clean(p.county);
+  const settlement = clean(p.city) || clean(p.town) || clean(p.village) || clean(p.municipality);
+  const place = settlement || clean(p.county);
+  // isDistrict: the "place" is only an administrative district (Geoapify `county`, e.g. "Bangalore
+  // Urban"), not a city/town/village — not a useful thing to pick as someone's area.
+  const isDistrict = !settlement && !!clean(p.county);
   const state = clean(p.state);
   let label = '', precision = 'city';
   if (area && place && area.toLowerCase() !== place.toLowerCase()) { label = `${area}, ${place}`; precision = 'neighborhood'; }
   else if (place) { label = state && state.toLowerCase() !== place.toLowerCase() ? `${place}, ${state}` : place; }
   else if (area) { label = state ? `${area}, ${state}` : area; precision = 'neighborhood'; }
   else if (state) { label = state; }
-  return label ? { label, precision } : null;
+  return label ? { label, precision, isDistrict } : null;
+}
+
+// AUTOCOMPLETE NOISE RULE: the homepage area/city picker should offer places people actually name
+// ("T Nagar, Chennai", "Bengaluru, Karnataka"), not administrative divisions. A suggestion is dropped when
+//  - it resolved only to an administrative district (no city/town/village), e.g. "Bangalore South", or
+//  - the area or place name contains an administrative-unit word (zone, ward, taluk, mandal, division,
+//    corporation, urban/rural, district ...), e.g. "Zone 10 Kodambakkam", "Bengaluru Urban".
+// This only filters suggestions; labels saved elsewhere (reverse geocode, etc.) are unchanged.
+const ADMIN_UNIT_WORDS = /\b(zone|ward|taluk|taluka|tehsil|tahsil|mandal|division|sub-?division|corporation|municipal(?:ity)?|urban|rural|district)\b/i;
+function isNoisySuggestion(pub, props) {
+  if (!pub || pub.isDistrict) return true;
+  const parts = [props && props.suburb, props && props.neighbourhood, props && props.quarter,
+                 props && props.city, props && props.town, props && props.village, props && props.municipality]
+    .filter(v => typeof v === 'string' && v.trim());
+  return ADMIN_UNIT_WORDS.test(pub.label) || parts.some(v => ADMIN_UNIT_WORDS.test(v));
 }
 
 // Forward geocode: free text -> { status, lat, lng }.
@@ -170,7 +189,7 @@ async function searchPlaces(text) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), GEOCODE_TIMEOUT_MS);
   try {
-    const url = `https://api.geoapify.com/v1/geocode/autocomplete?text=${encodeURIComponent(trimmed)}&limit=5&apiKey=${encodeURIComponent(GEOAPIFY_KEY)}`;
+    const url = `https://api.geoapify.com/v1/geocode/autocomplete?text=${encodeURIComponent(trimmed)}&filter=countrycode:in&limit=10&apiKey=${encodeURIComponent(GEOAPIFY_KEY)}`;
     const res = await fetch(url, { signal: controller.signal });
     if (res.status === 429) return { status: 'rate_limited', results: [] };
     if (!res.ok) return { status: 'failed', results: [] };
@@ -185,10 +204,12 @@ async function searchPlaces(text) {
       const pub = publicLocationFromProperties(f.properties);
       const lat = f.properties.lat, lng = f.properties.lon;
       if (!pub || !isValidLat(lat) || !isValidLng(lng)) continue;
+      if (isNoisySuggestion(pub, f.properties)) continue;
       const key = pub.label.toLowerCase();
       if (seen.has(key)) continue;
       seen.add(key);
       results.push({ label: pub.label, lat, lng, precision: pub.precision });
+      if (results.length >= 5) break; // asked the provider for 10 so noise removal still leaves up to 5
     }
     if (!results.length) return { status: 'not_found', results: [] };
     return { status: 'ok', results };
@@ -199,4 +220,4 @@ async function searchPlaces(text) {
   }
 }
 
-module.exports = { publicLocationFromProperties, geocodeText, reverseGeocode, searchPlaces, isGeocodingConfigured, isValidLat, isValidLng, fuzzCoordinate };
+module.exports = { publicLocationFromProperties, isNoisySuggestion, geocodeText, reverseGeocode, searchPlaces, isGeocodingConfigured, isValidLat, isValidLng, fuzzCoordinate };

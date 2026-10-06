@@ -10,6 +10,9 @@ const state = {
   // Explore Nearby: in-memory only (never saved, never persisted) — { lat, lng } rounded to ~110 m, or null.
   // nearbyDenied remembers a refused permission for this page visit so we never re-prompt.
   nearby: null, nearbyDenied: false,
+  // Autocomplete: when a suggestion is picked, locationTerm is its first segment (e.g. "T Nagar") so the
+  // list filter still matches profile locations / pickup areas that only contain that part.
+  locationTerm: null, locationSel: null,
   // PHASE 7: pagination UI state for the "Load more" button — itemsPage/requestsPage track the next
   // page to request, itemsHasMore/requestsHasMore mirror the backend's hasMore flag from Phase 6's
   // opt-in pagination response shape ({ items/requests, page, limit, total, hasMore }).
@@ -855,10 +858,12 @@ function bindTopBar() {
     const next = e.target.value;
     if (next.trim().toLowerCase() === (state.location || '').trim().toLowerCase() && !(state.nearby && next.trim())) { state.location = next; return; }
     state.location = next;
+    state.locationTerm = null; state.locationSel = null; // typed by hand: filter by exactly what was typed
     if (next.trim()) state.nearby = null;
     state.section === 'requests' ? loadRequests() : loadItems();
     loadNearbyActivity();
   }, 350);
+  bindLocationAutocomplete();
   $('#priceFilter').onchange = e => { state.priceType = e.target.value; loadItems(); };
   // Filters V1: a small revealed row (urgent-only + sort) rather than a full filter drawer —
   // works identically for items (Zineedo/Food Rescue/Business Surplus) and Requests.
@@ -1622,7 +1627,7 @@ async function loadNearbyActivity() {
       // Requests have no coordinates, so a GPS search is items-only.
       countsHtml = `<div class="nearby-count"><strong>${itemTotal}</strong> item${itemTotal === 1 ? '' : 's'} within ${NEARBY_RADIUS_KM} km</div>`;
     } else {
-      const q = '&limit=3&location=' + encodeURIComponent(loc);
+      const q = '&limit=3&location=' + encodeURIComponent(locFilterValue().trim());
       const [a, b, c, d] = await Promise.all([
         api('/api/items?listing_type=consumer' + q, opts),
         api('/api/items?listing_type=business_waste' + q, opts),
@@ -1695,7 +1700,7 @@ function startNearby() {
       }
       ensureHomepageVisible();
       state.nearby = { lat: Math.round(latitude * 1000) / 1000, lng: Math.round(longitude * 1000) / 1000 };
-      state.location = '';
+      state.location = ''; state.locationTerm = null; state.locationSel = null;
       const input = $('#locationFilter'); if (input) input.value = '';
       if (state.section === 'requests') {
         // Requests have no coordinates; switch to Give & Take (its tab handler reloads with nearby on).
@@ -1726,6 +1731,143 @@ function bindNearbySection() {
   const btn = $('#nearbyCtaBtn');
   if (!btn) return;
   btn.onclick = startNearby;
+}
+
+// ---------- Location autocomplete (homepage area/city filter) ----------
+// Suggestions come from the existing GET /api/location/search (Geoapify behind our server). That
+// endpoint already returns only the safe public label (area / city / state — see the P0 fix in
+// geocoding.js), so no house number or street can reach this dropdown. This only helps the user
+// choose an area; the GPS "Explore nearby" flow is separate and untouched.
+const locSuggestCache = new Map();
+function locFilterValue() { return state.locationTerm || state.location || ''; }
+
+function bindLocationAutocomplete() {
+  const input = $('#locationFilter');
+  if (!input || input.dataset.suggestBound) return;
+  input.dataset.suggestBound = '1';
+  const box = document.createElement('div');
+  box.className = 'loc-suggest';
+  box.id = 'locSuggestList';
+  box.setAttribute('role', 'listbox');
+  box.hidden = true;
+  document.body.appendChild(box);
+  input.setAttribute('role', 'combobox');
+  input.setAttribute('aria-autocomplete', 'list');
+  input.setAttribute('aria-expanded', 'false');
+  input.setAttribute('aria-controls', 'locSuggestList');
+  input.setAttribute('autocomplete', 'off');
+
+  let rows = [], active = -1, seq = 0, ctl = null;
+
+  const position = () => {
+    const r = input.getBoundingClientRect();
+    const width = Math.min(Math.max(r.width, 240), window.innerWidth - 16);
+    box.style.width = width + 'px';
+    box.style.left = Math.max(8, Math.min(r.left, window.innerWidth - width - 8)) + 'px';
+    box.style.top = (r.bottom + 4) + 'px';
+  };
+  const close = () => {
+    box.hidden = true; active = -1;
+    input.setAttribute('aria-expanded', 'false');
+    input.removeAttribute('aria-activedescendant');
+    if (ctl) { ctl.abort(); ctl = null; }
+    seq++; // anything still in flight is now stale and will be ignored
+  };
+  // While open, follow the input each frame: the page can shift under it (e.g. the nearby strip
+  // re-renders after a filter change), and a one-off position would leave the list overlapping the field.
+  let raf = 0;
+  const follow = () => { if (box.hidden) { raf = 0; return; } position(); raf = requestAnimationFrame(follow); };
+  const open = () => { position(); box.hidden = false; input.setAttribute('aria-expanded', 'true'); if (!raf) raf = requestAnimationFrame(follow); };
+  const note = (text) => { box.innerHTML = `<div class="loc-suggest-note" role="status">${escapeHtml(text)}</div>`; open(); };
+  const highlight = (i) => {
+    active = i;
+    box.querySelectorAll('.loc-suggest-item').forEach((el, idx) => {
+      el.classList.toggle('active', idx === i);
+      el.setAttribute('aria-selected', idx === i ? 'true' : 'false');
+      if (idx === i) { input.setAttribute('aria-activedescendant', el.id); el.scrollIntoView({ block: 'nearest' }); }
+    });
+  };
+  const render = (list) => {
+    rows = list; active = -1;
+    if (!list.length) { note('No locations found'); return; }
+    box.innerHTML = list.map((r, i) => `<div class="loc-suggest-item" role="option" id="locSuggest${i}" data-i="${i}" aria-selected="false"><span aria-hidden="true">📍</span><span class="loc-suggest-label">${escapeHtml(r.label)}</span></div>`).join('');
+    open();
+  };
+  const choose = (i) => {
+    const r = rows[i];
+    if (!r) return;
+    input.value = r.label;                       // the safe public label
+    state.location = r.label;
+    state.locationTerm = r.label.split(',')[0].trim(); // filter by the area/city name itself
+    state.locationSel = { label: r.label, lat: r.lat, lng: r.lng }; // kept in memory only, not sent anywhere
+    state.nearby = null;
+    close();                                     // also cancels any in-flight lookup — no extra search after picking
+    state.section === 'requests' ? loadRequests() : loadItems();
+    loadNearbyActivity();
+  };
+
+  const fetchSuggestions = debounce(async (q) => {
+    const key = q.toLowerCase();
+    if (locSuggestCache.has(key)) { render(locSuggestCache.get(key)); return; }
+    if (ctl) ctl.abort();
+    const my = ++seq;
+    ctl = new AbortController();
+    try {
+      const res = await fetch('/api/location/search?q=' + encodeURIComponent(q), { credentials: 'include', signal: ctl.signal });
+      const data = await res.json().catch(() => ({}));
+      if (my !== seq) return; // a newer keystroke (or a selection) superseded this response
+      if (data.status === 'ok' && Array.isArray(data.results)) {
+        const list = data.results.filter(r => r && typeof r.label === 'string');
+        if (locSuggestCache.size > 40) locSuggestCache.delete(locSuggestCache.keys().next().value);
+        locSuggestCache.set(key, list);
+        render(list);
+      } else if (data.status === 'not_found') {
+        render([]);
+      } else if (data.status === 'rate_limited') {
+        note('Too many searches — try again in a moment');
+      } else {
+        // not_configured / failed / timeout: the field simply keeps working as a plain text filter
+        box.hidden = true; input.setAttribute('aria-expanded', 'false');
+      }
+    } catch (e) {
+      if (e && e.name === 'AbortError') return;
+      if (my === seq) { box.hidden = true; input.setAttribute('aria-expanded', 'false'); }
+    }
+  }, 300);
+
+  input.addEventListener('input', () => {
+    const q = input.value.trim();
+    if (q.length < 2) { close(); return; }
+    if (!locSuggestCache.has(q.toLowerCase())) note('Searching…');
+    fetchSuggestions(q);
+  });
+  input.addEventListener('keydown', (e) => {
+    const isOpen = !box.hidden && rows.length > 0 && box.querySelector('.loc-suggest-item');
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      if (!isOpen) return;
+      e.preventDefault();
+      const n = rows.length;
+      highlight(e.key === 'ArrowDown' ? (active + 1) % n : (active - 1 + n) % n);
+    } else if (e.key === 'Enter') {
+      if (isOpen && active >= 0) { e.preventDefault(); choose(active); }
+    } else if (e.key === 'Escape') {
+      if (!box.hidden) { e.preventDefault(); close(); }
+    } else if (e.key === 'Tab') {
+      close();
+    }
+  });
+  // pointerdown + preventDefault keeps focus in the input and avoids the blur-before-click problem on touch.
+  box.addEventListener('pointerdown', (e) => {
+    const el = e.target.closest('.loc-suggest-item');
+    if (!el) return;
+    e.preventDefault();
+    choose(+el.dataset.i);
+  });
+  document.addEventListener('pointerdown', (e) => {
+    if (!box.hidden && e.target !== input && !box.contains(e.target)) close();
+  });
+  window.addEventListener('resize', () => { if (!box.hidden) position(); });
+  window.addEventListener('scroll', () => { if (!box.hidden) position(); }, true);
 }
 
 // ---------- Impact Tracker collapsed tab + slide-out panel ----------
@@ -1868,7 +2010,7 @@ async function loadItems(append = false) {
   if (state.category) params.set('category', state.category);
   if (state.priceType) params.set('price_type', state.priceType);
   if (state.q) params.set('q', state.q);
-  if (state.location) params.set('location', state.location);
+  if (state.location) params.set('location', locFilterValue());
   if (state.nearby) { params.set('lat', state.nearby.lat); params.set('lng', state.nearby.lng); params.set('radius_km', NEARBY_RADIUS_KM); }
   if (state.urgentOnly) params.set('urgent', '1');
   if (state.sort) params.set('sort', state.sort);
@@ -1889,7 +2031,7 @@ async function loadRequests(append = false) {
   if (state.category) params.set('category', state.category);
   if (state.q) params.set('q', state.q);
   if (state.urgentOnly) params.set('urgent', '1');
-  if (state.location) params.set('location', state.location);
+  if (state.location) params.set('location', locFilterValue());
   if (state.sort) params.set('sort', state.sort);
   params.set('page', state.requestsPage);
   params.set('limit', GRID_PAGE_SIZE);
