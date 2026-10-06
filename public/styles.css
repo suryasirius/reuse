@@ -928,15 +928,19 @@ main{max-width:1800px;width:calc(100vw - 64px);margin:0 auto;padding:14px 12px 8
 /* auto-fill (not auto-fit): auto-fit stretches a lone card to fill the whole row when a filter
    narrows results down to just one or two items -- auto-fill leaves the leftover track space
    blank instead, so a single result stays a normal-sized card rather than a giant stretched one. */
-.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:20px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:24px}
 .card{
-  background:#fff;border:1px solid var(--border-soft);border-radius:22px;padding:17px;
+  background:#fff;border:1px solid var(--border);border-radius:18px;padding:16px;
   overflow:visible;cursor:pointer;
-  box-shadow:0 10px 30px rgba(0,0,0,.05);
-  transition:transform .3s var(--ease), box-shadow .3s var(--ease);
+  box-shadow:0 1px 2px rgba(20,30,20,.04), 0 4px 14px rgba(20,30,20,.05);
+  transition:transform .25s var(--ease), box-shadow .25s var(--ease);
   display:flex;flex-direction:column;justify-content:space-between;
 }
-.card:hover{transform:translateY(-6px);box-shadow:0 22px 50px rgba(0,0,0,.1)}
+.card:hover{transform:translateY(-3px);box-shadow:0 2px 4px rgba(20,30,20,.05), 0 12px 28px rgba(20,30,20,.09)}
+/* Card polish: the text block fills the card so the footer row (location / View) sits at the same
+   baseline in every card of a row, whatever the title length. Browse grids only (not My Posts). */
+.grid .card:not(.my-post-card) .body{display:flex;flex-direction:column;flex:1 1 auto}
+.grid .card:not(.my-post-card) .footer-bar{margin-top:auto}
 
 /* PHASE 7: "Load more" pagination control (Section 18) — explicit button, not infinite scroll.
    Reuses existing tokens (--brand, --border, --radius-sm) rather than introducing new ones. Full
@@ -955,12 +959,12 @@ main{max-width:1800px;width:calc(100vw - 64px);margin:0 auto;padding:14px 12px 8
   .secondary-btn{width:100%;padding:13px 20px;font-size:15px}
 }
 .card .thumb{
-  width:100%;aspect-ratio:4/3;height:auto;position:relative;border-radius:14px;overflow:hidden;margin-bottom:14px;
+  width:100%;aspect-ratio:4/3;height:auto;position:relative;border-radius:12px;overflow:hidden;margin-bottom:14px;
   background:linear-gradient(135deg,#eef6f0,#f4f8f5);
   display:flex;align-items:center;justify-content:center;
 }
 .card .thumb img, .card .thumb video{width:100%;height:100%;object-fit:cover;transition:transform .5s var(--ease)}
-.card:hover .thumb img{transform:scale(1.04)}
+.card:hover .thumb img{transform:scale(1.02)}
 .card .thumb .thumb-emoji{font-size:64px;line-height:1;opacity:.9}
 /* AUDIT FIX: distinct "image under review" state — same box/sizing as the existing no-photo
    placeholder above, just a different icon + short label so it can't be mistaken for a failed/
@@ -971,7 +975,7 @@ main{max-width:1800px;width:calc(100vw - 64px);margin:0 auto;padding:14px 12px 8
 .card .price-badge{
   position:absolute;top:10px;left:10px;padding:4px 12px;
   background:var(--brand);color:#fff;font-size:12.5px;font-weight:700;
-  border-radius:999px;box-shadow:0 2px 6px rgba(0,0,0,.12);white-space:nowrap;
+  border-radius:999px;box-shadow:0 1px 3px rgba(0,0,0,.12);white-space:nowrap;
 }
 /* One color per offer type so Free/Paid/Rent/Exchange read apart from each other while scrolling a
    grid, instead of every badge being the same green regardless of what it means. Mirrors the hues
@@ -993,15 +997,15 @@ main{max-width:1800px;width:calc(100vw - 64px);margin:0 auto;padding:14px 12px 8
 .card .wishlist-btn:active{transform:scale(.9)}
 .card .wishlist-btn svg{width:17px;height:17px;stroke:#1B1F23;fill:none;transition:fill .15s, stroke .15s}
 .card .wishlist-btn.active svg{fill:#f43f5e;stroke:#f43f5e}
-.card h3{margin:0 0 4px;font-size:16px;font-weight:700;line-height:1.3;letter-spacing:-.005em;color:#111827;transition:color .15s}
+.card h3{margin:0 0 6px;font-size:16px;font-weight:700;line-height:1.3;letter-spacing:-.005em;color:#111827;transition:color .15s;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere}
 .card:hover h3{color:var(--brand)}
-.card .meta{margin:0 0 12px;font-size:12.5px;font-weight:500;color:var(--meta);display:flex;align-items:center;gap:4px;flex-wrap:wrap}
-.card .meta .owner-name{font-weight:500;color:var(--meta);display:inline-flex;align-items:center;gap:3px}
+.card .meta{margin:0 0 14px;font-size:12.5px;font-weight:500;color:var(--muted);display:flex;align-items:center;gap:4px;flex-wrap:wrap}
+.card .meta .owner-name{font-weight:500;color:var(--muted);display:inline-flex;align-items:center;gap:3px}
 .card .meta .owner-check{color:var(--brand);display:inline-flex}
 .card .meta .owner-check svg{width:13px;height:13px}
 .card .badge-row{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px}
 .card .footer-bar{
-  display:flex;align-items:center;justify-content:space-between;padding-top:8px;gap:10px;
+  display:flex;align-items:center;justify-content:space-between;padding-top:12px;gap:10px;
   border-top:1px solid var(--border-soft);font-size:12.5px;font-weight:600;color:var(--meta);
 }
 .card .footer-bar .loc{display:inline-flex;align-items:center;gap:5px}
@@ -2169,21 +2173,21 @@ html,body{overflow-x:hidden;max-width:100%}
      column (comes later in the file, wins the cascade tie at equal specificity) — the actual
      bug behind "too much scrolling, not enough listings per screen". Same .card markup/click
      handlers used by both item and request cards; only sizing changes. ---- */
-  .grid{grid-template-columns:1fr 1fr;gap:10px}
-  .card{padding:8px;border-radius:14px}
-  .card .thumb{height:110px;border-radius:10px;margin-bottom:8px}
+  .grid{grid-template-columns:1fr 1fr;gap:12px}
+  .card{padding:9px;border-radius:14px}
+  .card .thumb{height:110px;border-radius:10px;margin-bottom:10px}
   .card .thumb .thumb-emoji{font-size:34px}
   .card .price-badge{padding:3px 8px;font-size:10.5px;top:6px;left:6px}
   .card .urgent-food-badge{padding:3px 8px;font-size:9px;bottom:6px;left:6px}
   .card .wishlist-btn{width:26px;height:26px;top:6px;right:6px}
   .card .wishlist-btn svg{width:13px;height:13px}
   .card h3{
-    font-size:12.5px;margin:0 0 2px;
-    display:-webkit-box;-webkit-line-clamp:1;-webkit-box-orient:vertical;overflow:hidden;
+    font-size:13px;margin:0 0 3px;line-height:1.25;
+    display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;
   }
-  .card .meta{font-size:10px;margin:0 0 6px;gap:2px}
+  .card .meta{font-size:10px;margin:0 0 8px;gap:2px}
   .card .food-until-hint{font-size:9px;margin:-2px 0 4px}
-  .card .footer-bar{padding-top:6px;font-size:9.5px;gap:4px}
+  .card .footer-bar{padding-top:8px;font-size:9.5px;gap:4px}
   .card .footer-bar .loc svg{width:11px;height:11px}
   .card .go-btn{display:none}
 
