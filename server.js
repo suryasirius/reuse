@@ -28,6 +28,7 @@ const rateLimit = require('express-rate-limit');
 const helmet = require('helmet');
 const db = require('./db');
 // LOCATION FOUNDATION V1: see geocoding.js for the provider abstraction itself.
+const { locationMatchClause } = require('./location-terms');
 const { geocodeText, reverseGeocode, searchPlaces, isGeocodingConfigured, isValidLat, isValidLng, fuzzCoordinate } = require('./geocoding');
 
 const app = express();
@@ -780,6 +781,22 @@ function isEdibleFoodListing(category, isEdibleFoodFlag) {
   return false;
 }
 
+// ---------- Food Rescue safety acknowledgement ----------
+// Provider (posting edible food) and recipient (requesting/claiming edible food) must each confirm the
+// food-safety statement. Enforced HERE, server-side, so the checkbox can't be bypassed by editing the
+// page's JavaScript or calling the API directly. The acknowledgement is stored in food_safety_acks.
+// LEGAL NOTE (internal, not shown to users): the exact wording of these statements and of terms.html
+// must be reviewed by an Indian lawyer familiar with intermediary/platform liability, consumer
+// protection, food-safety (FSSAI) and e-commerce rules before production launch. This is not a
+// substitute for proper Terms of Service.
+const FOOD_SAFETY_ACK_VERSION = '2026-10-v2';
+function recordFoodSafetyAck(userId, itemId, claimId, role) {
+  try {
+    db.prepare('INSERT INTO food_safety_acks (id, user_id, item_id, claim_id, role, text_version) VALUES (?,?,?,?,?,?)')
+      .run(nanoid(), userId, itemId, claimId || null, role, FOOD_SAFETY_ACK_VERSION);
+  } catch (e) { console.error('[food-safety-ack] could not record acknowledgement:', e.message); }
+}
+
 // Normalizes a browser datetime-local value ("2026-08-13T14:30") into the "YYYY-MM-DD HH:MM:SS"
 // shape SQLite's datetime('now') comparisons expect. Returns null for anything unparseable, which
 // callers treat the same as "not provided". Known V1 limitation: datetime-local is the browser's
@@ -1326,7 +1343,11 @@ app.get('/api/items', optionalAuth, (req, res) => {
     params.push(...catValues);
   }
   if (price_type) { sql += ' AND items.price_type = ?'; params.push(price_type); }
-  if (location) { sql += ' AND users.location LIKE ?'; params.push(`%${location}%`); }
+  // Location filter matches the owner's profile location OR this listing's own pickup area (so a
+  // listing posted from a "Chennai" profile with pickup area "Usman Road, T Nagar" is found by
+  // "T Nagar"), and treats known alternate spellings (Bangalore/Bengaluru) as the same place.
+  // Only the public pickup_area is searched — never pickup_address/pickup_instructions.
+  if (location) { const lc = locationMatchClause(location, ['users.location', 'items.pickup_area']); if (lc) { sql += ' AND ' + lc.sql; params.push(...lc.params); } }
   if (q) { sql += ' AND (items.title LIKE ? OR items.description LIKE ?)'; params.push(`%${q}%`, `%${q}%`); }
   if (urgent) { sql += ' AND items.is_urgent = 1'; }
   if (mine) { sql += ' AND items.user_id = ?'; params.push(mine); }
@@ -1449,6 +1470,11 @@ app.post('/api/items', requireAuth, createListingLimiter, upload.array('media', 
     files.forEach(f => { try { fs.unlinkSync(f.path); } catch {} });
     return res.status(400).json({ error: 'Food available until (your pickup deadline) is required for food listings' });
   }
+  // Food Rescue: the provider must confirm the food-safety statement (validated server-side).
+  if (edible && !truthy(req.body.food_safety_ack)) {
+    files.forEach(f => { try { fs.unlinkSync(f.path); } catch {} });
+    return res.status(400).json({ error: 'Please confirm the food safety statement before posting food' });
+  }
   const id = nanoid();
   // Image Moderation V1: every uploaded file goes through moderateImage(), not just the first —
   // approved files move out of quarantine into the public uploads dir; anything else stays
@@ -1488,6 +1514,7 @@ app.post('/api/items', requireAuth, createListingLimiter, upload.array('media', 
     db.prepare("INSERT INTO item_media (id, item_id, url, thumb_url, media_type, position, status, moderation_note, moderated_at, moderated_by) VALUES (?,?,?,?,?,?,?,?, datetime('now'), 'auto')")
       .run(nanoid(), id, m.url, m.thumbUrl || null, 'image', i, m.status, m.note);
   });
+  if (edible) recordFoodSafetyAck(req.user.id, id, null, 'provider');
   const item = db.prepare('SELECT * FROM items WHERE id = ?').get(id);
   res.json(attachMedia(item));
   // LOCATION FOUNDATION: fire-and-forget, after the response is already sent.
@@ -1643,6 +1670,12 @@ app.patch('/api/items/:id', requireAuth, upload.array('media', MAX_UPLOAD_FILES)
     if (newEdible && !newAvailableUntil) {
       return res.status(400).json({ error: 'Food available until (your pickup deadline) is required for food listings' });
     }
+    // An edit must not be a back door around the Food Rescue safety confirmation: turning a non-food
+    // listing into an edible-food one has to go through the new-listing flow, which collects it.
+    if (newEdible && !isEdibleFoodListing(item.category, item.is_edible_food)) {
+      files.forEach(f => { try { fs.unlinkSync(f.path); } catch {} });
+      return res.status(400).json({ error: 'To list this as food, please post it as a new Food Rescue listing so you can confirm the food safety statement' });
+    }
     db.prepare(`UPDATE items SET title=?, description=?, category=?, condition=?, quantity=?, price_type=?, price=?, exchange_for=?, rent_rate=?, rent_period=?, deposit=?, pickup_available=?, pickup_type=?, pickup_area=?, pickup_address=?, pickup_instructions=?, available_until=?, is_urgent=?, food_pref=?, is_edible_food=? WHERE id=?`)
       .run(
         title, description || item.description, newCategory, condition || item.condition, quantity || '',
@@ -1736,9 +1769,15 @@ app.post('/api/items/:id/claim', requireAuth, (req, res) => {
   if (item.status !== 'available') {
     return res.status(400).json({ error: 'This item is no longer available' });
   }
+  // Food Rescue: the recipient must confirm they understand the food-safety notice (validated server-side).
+  const claimIsEdibleFood = isEdibleFoodListing(item.category, item.is_edible_food);
+  if (claimIsEdibleFood && !truthy(req.body.food_safety_ack)) {
+    return res.status(400).json({ error: 'Please confirm that you understand the food safety notice before requesting this food' });
+  }
   const id = nanoid();
   db.prepare('INSERT INTO claims (id, item_id, requester_id, message) VALUES (?,?,?,?)')
     .run(id, item.id, req.user.id, req.body.message || '');
+  if (claimIsEdibleFood) recordFoodSafetyAck(req.user.id, item.id, id, 'recipient');
   db.prepare('UPDATE items SET request_count = request_count + 1 WHERE id = ?').run(item.id);
   notify(item.user_id, 'new_request', `${req.user.name} requested "${item.title}"`, item.id, 'claim', id);
   res.json({ ok: true, id });
@@ -2095,7 +2134,7 @@ const REPORT_TARGET_TYPES = ['item', 'user', 'request', 'rating'];
 // Fixed reason categories rather than free text only — lets Report actually mean something
 // specific (and someday be triaged/prioritized by category) instead of an unstructured guess.
 // 'other' is the catch-all; 'reason' stays as optional additional detail on every category.
-const REPORT_CATEGORIES = ['scam_fraud', 'harassment', 'suspicious_request', 'inappropriate_content', 'fake_profile', 'asking_for_money', 'unsafe_behavior', 'other'];
+const REPORT_CATEGORIES = ['scam_fraud', 'harassment', 'suspicious_request', 'inappropriate_content', 'fake_profile', 'asking_for_money', 'unsafe_behavior', 'food_safety', 'other'];
 app.post('/api/reports', requireAuth, reportLimiter, (req, res) => {
   const { target_type, target_id, category, reason } = req.body;
   if (!target_type || !target_id || !category) return res.status(400).json({ error: 'Missing fields' });
@@ -2123,7 +2162,8 @@ app.get('/api/requests', optionalAuth, (req, res) => {
     params.push(...catValues);
   }
   if (urgent) { sql += ' AND requests.is_urgent = 1'; }
-  if (location) { sql += ' AND users.location LIKE ?'; params.push(`%${location}%`); }
+  // Requests have no pickup area, so only the requester's profile location is matched (alias-aware).
+  if (location) { const lc = locationMatchClause(location, ['users.location']); if (lc) { sql += ' AND ' + lc.sql; params.push(...lc.params); } }
   if (q) { sql += ' AND (requests.title LIKE ? OR requests.description LIKE ?)'; params.push(`%${q}%`, `%${q}%`); }
   if (mine) { sql += ' AND requests.user_id = ?'; params.push(mine); }
   // Default (no/unknown sort param) preserves the exact pre-existing order — urgent-first — so

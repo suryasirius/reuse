@@ -396,6 +396,24 @@ CREATE TABLE IF NOT EXISTS moderation_usage (
 )
 `);
 
+// ---------- Food Rescue safety acknowledgements ----------
+// Audit trail: one row each time a provider confirms the food-safety statement while posting edible
+// food (role 'provider', claim_id NULL) or a recipient confirms it before requesting/claiming food
+// (role 'recipient', claim_id = the claim). text_version lets a later wording change be told apart
+// from earlier acknowledgements. Deliberately small — not a general legal/audit system.
+db.exec(`
+CREATE TABLE IF NOT EXISTS food_safety_acks (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  item_id TEXT NOT NULL,
+  claim_id TEXT,
+  role TEXT NOT NULL,
+  text_version TEXT NOT NULL,
+  created_at TEXT DEFAULT (datetime('now'))
+)
+`);
+db.exec("CREATE INDEX IF NOT EXISTS idx_food_safety_acks_item ON food_safety_acks(item_id)");
+
 // ---------- Web Push V1 ----------
 // One row per browser/device a user has turned notifications on in (endpoint is unique per
 // browser install, so the same user opening Zineedo on their phone AND laptop gets two rows and a

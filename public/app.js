@@ -7,6 +7,9 @@ const state = {
   businessCategoriesPrimaryCount: 0, showAllBusinessCategories: false,
   section: 'consumer', requestType: 'thing', urgentOnly: false, sort: '',
   items: [], requests: [], category: '', priceType: '', q: '', location: '',
+  // Explore Nearby: in-memory only (never saved, never persisted) — { lat, lng } rounded to ~110 m, or null.
+  // nearbyDenied remembers a refused permission for this page visit so we never re-prompt.
+  nearby: null, nearbyDenied: false,
   // PHASE 7: pagination UI state for the "Load more" button — itemsPage/requestsPage track the next
   // page to request, itemsHasMore/requestsHasMore mirror the backend's hasMore flag from Phase 6's
   // opt-in pagination response shape ({ items/requests, page, limit, total, hasMore }).
@@ -847,7 +850,12 @@ function bindTopBar() {
     state.section === 'requests' ? loadRequests() : loadItems();
   }, 350);
   $('#locationFilter').oninput = debounce(e => {
-    state.location = e.target.value;
+    // Skip when the effective text didn't change (e.g. a trailing space), so it can't trigger a
+    // repeat round of list requests; typing a place replaces any active GPS "nearby" search.
+    const next = e.target.value;
+    if (next.trim().toLowerCase() === (state.location || '').trim().toLowerCase() && !(state.nearby && next.trim())) { state.location = next; return; }
+    state.location = next;
+    if (next.trim()) state.nearby = null;
     state.section === 'requests' ? loadRequests() : loadItems();
     loadNearbyActivity();
   }, 350);
@@ -1575,41 +1583,76 @@ function timeAgo(dateStr) {
 
 const NEARBY_ICONS = { consumer: '🪑', business_waste: '📦', thing: '🪑', service: '🤝' };
 
+// Nearby strip. It only shows counts when there is a REAL location context — an active GPS "Explore
+// nearby" search, or a typed area/city filter. With neither, it shows a prompt instead of a count
+// (previously it counted every listing as "nearby"). Counts come from small paginated requests
+// (limit=3 gives `total`), stale requests are aborted, and nothing is fetched at all without context.
+const NEARBY_RADIUS_KM = 10; // implementation default — the "right" radius is still an open product question
+let nearbyActivitySeq = 0, nearbyActivityCtl = null;
+
+function setNearbyStripMessage(msg) {
+  const el = $('#nearbyCounts');
+  if (el) el.innerHTML = `<div class="nearby-count nearby-msg" role="status">${escapeHtml(msg)}</div>`;
+}
+
 async function loadNearbyActivity() {
   const countsEl = $('#nearbyCounts');
   const recentEl = $('#nearbyRecent');
   if (!countsEl || !recentEl) return;
+  if (nearbyActivityCtl) { nearbyActivityCtl.abort(); nearbyActivityCtl = null; }
+  const seq = ++nearbyActivitySeq;
+  const loc = (state.location || '').trim();
+  if (!state.nearby && !loc) {
+    setNearbyStripMessage('Find items near you — tap Explore nearby');
+    recentEl.innerHTML = '';
+    return;
+  }
+  const ctl = new AbortController();
+  nearbyActivityCtl = ctl;
+  const opts = { signal: ctl.signal };
   try {
-    const loc = state.location || '';
-    const q = loc ? '&location=' + encodeURIComponent(loc) : '';
-    const [consumerItems, bizItems, thingReqs, serviceReqs] = await Promise.all([
-      api('/api/items?listing_type=consumer' + q),
-      api('/api/items?listing_type=business_waste' + q),
-      api('/api/requests?request_type=thing' + q),
-      api('/api/requests?request_type=service' + q)
-    ]);
-    const allItems = [...consumerItems, ...bizItems];
-    const allRequests = [...thingReqs, ...serviceReqs];
-
-    countsEl.innerHTML = `
-      <div class="nearby-count"><strong>${allItems.length}</strong> item${allItems.length === 1 ? '' : 's'} nearby</div>
-      <div class="nearby-count"><strong>${allRequests.length}</strong> request${allRequests.length === 1 ? '' : 's'} nearby</div>
-    `;
+    let items = [], itemTotal = 0, requests = [], requestTotal = 0, countsHtml;
+    if (state.nearby) {
+      const g = `&limit=3&lat=${state.nearby.lat}&lng=${state.nearby.lng}&radius_km=${NEARBY_RADIUS_KM}`;
+      const [a, b] = await Promise.all([
+        api('/api/items?listing_type=consumer' + g, opts),
+        api('/api/items?listing_type=business_waste' + g, opts)
+      ]);
+      items = [...a.items, ...b.items]; itemTotal = a.total + b.total;
+      // Requests have no coordinates, so a GPS search is items-only.
+      countsHtml = `<div class="nearby-count"><strong>${itemTotal}</strong> item${itemTotal === 1 ? '' : 's'} within ${NEARBY_RADIUS_KM} km</div>`;
+    } else {
+      const q = '&limit=3&location=' + encodeURIComponent(loc);
+      const [a, b, c, d] = await Promise.all([
+        api('/api/items?listing_type=consumer' + q, opts),
+        api('/api/items?listing_type=business_waste' + q, opts),
+        api('/api/requests?request_type=thing' + q, opts),
+        api('/api/requests?request_type=service' + q, opts)
+      ]);
+      items = [...a.items, ...b.items]; itemTotal = a.total + b.total;
+      requests = [...c.requests, ...d.requests]; requestTotal = c.total + d.total;
+      const where = escapeHtml(loc);
+      countsHtml = `
+        <div class="nearby-count"><strong>${itemTotal}</strong> item${itemTotal === 1 ? '' : 's'} in ${where}</div>
+        <div class="nearby-count"><strong>${requestTotal}</strong> request${requestTotal === 1 ? '' : 's'} in ${where}</div>`;
+    }
+    if (seq !== nearbyActivitySeq) return; // a newer search superseded this one
+    countsEl.innerHTML = countsHtml;
 
     const feed = [
-      ...allItems.map(i => ({ type: 'item', icon: NEARBY_ICONS[i.listing_type] || '🪑', title: i.title, loc: i.owner_location, at: i.created_at, id: i.id })),
-      ...allRequests.map(r => ({ type: 'request', icon: NEARBY_ICONS[r.request_type] || '🙋', title: r.title, loc: r.owner_location, at: r.created_at, id: r.id }))
+      ...items.map(i => ({ type: 'item', icon: NEARBY_ICONS[i.listing_type] || '🪑', title: i.title, loc: i.owner_location, at: i.created_at, id: i.id })),
+      ...requests.map(r => ({ type: 'request', icon: NEARBY_ICONS[r.request_type] || '🙋', title: r.title, loc: r.owner_location, at: r.created_at, id: r.id }))
     ].sort((a, b) => new Date(b.at) - new Date(a.at)).slice(0, 3);
 
     if (!feed.length) {
-      recentEl.innerHTML = `<div class="nearby-empty">Nothing new nearby yet. Be the first to post.</div>`;
+      recentEl.innerHTML = `<div class="nearby-empty">Nothing here yet. Be the first to post.</div>`;
     } else {
       recentEl.innerHTML = feed.map(f => `
         <div class="nearby-row" data-type="${f.type}" data-id="${f.id}">
           <span class="nearby-row-icon">${f.icon}</span>
           <span class="nearby-row-text">
             <span class="nearby-row-title">${escapeHtml(f.title)}</span>
-            <span class="nearby-row-meta">${escapeHtml(f.loc || 'Nearby')} · ${timeAgo(f.at)}</span>
+            <span class="nearby-row-meta">${escapeHtml(f.loc || '')}${f.loc ? ' · ' : ''}${timeAgo(f.at)}</span>
           </span>
         </div>
       `).join('');
@@ -1617,21 +1660,72 @@ async function loadNearbyActivity() {
         row.onclick = () => row.dataset.type === 'item' ? openDetail(row.dataset.id) : openRequestDetail(row.dataset.id);
       });
     }
-  } catch (e) { /* non-critical */ }
+  } catch (e) {
+    if (e && e.name === 'AbortError') return;
+    /* non-critical */
+  }
+}
+
+// Explore nearby: ask the browser for the current position (only on this click, and never again
+// after a refusal), then reuse the existing /api/items nearby search (lat/lng/radius_km). The
+// coordinates live only in memory, are rounded to ~110 m, and are only ever sent to our own API.
+let nearbyLocating = false;
+function startNearby() {
+  const btn = $('#nearbyCtaBtn');
+  const fallbackToText = (msg) => {
+    setNearbyStripMessage(msg);
+    $('#nearbyRecent').innerHTML = '';
+    const input = $('#locationFilter');
+    if (input) { input.scrollIntoView({ behavior: 'smooth', block: 'center' }); setTimeout(() => input.focus(), 350); }
+  };
+  if (state.nearby) { $('#content')?.scrollIntoView({ behavior: 'smooth', block: 'start' }); return; }
+  if (state.nearbyDenied) return fallbackToText('Location is blocked for this site. Search by area or city instead.');
+  if (!navigator.geolocation) return fallbackToText("Your browser can't share your location. Search by area or city instead.");
+  if (nearbyLocating) return;
+  nearbyLocating = true;
+  const original = btn ? btn.textContent : '';
+  if (btn) { btn.disabled = true; btn.textContent = 'Locating…'; }
+  const done = () => { nearbyLocating = false; if (btn) { btn.disabled = false; btn.textContent = original; } };
+  navigator.geolocation.getCurrentPosition(
+    (pos) => {
+      done();
+      const { latitude, longitude } = pos.coords || {};
+      if (typeof latitude !== 'number' || typeof longitude !== 'number' || latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180) {
+        return fallbackToText("Couldn't work out your location. Search by area or city instead.");
+      }
+      ensureHomepageVisible();
+      state.nearby = { lat: Math.round(latitude * 1000) / 1000, lng: Math.round(longitude * 1000) / 1000 };
+      state.location = '';
+      const input = $('#locationFilter'); if (input) input.value = '';
+      if (state.section === 'requests') {
+        // Requests have no coordinates; switch to Give & Take (its tab handler reloads with nearby on).
+        document.querySelector('.section-tab[data-section="consumer"]')?.click();
+      } else {
+        loadItems();
+      }
+      loadNearbyActivity();
+      $('#content')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    },
+    (err) => {
+      done();
+      if (err && err.code === 1) { state.nearbyDenied = true; return fallbackToText('Location permission was denied. Search by area or city instead.'); }
+      if (err && err.code === 3) return fallbackToText('Finding your location timed out. Try again, or search by area or city.');
+      fallbackToText("Couldn't find your location right now. Search by area or city instead.");
+    },
+    { timeout: 10000, maximumAge: 60000 }
+  );
+}
+
+function clearNearby() {
+  state.nearby = null;
+  loadItems();
+  loadNearbyActivity();
 }
 
 function bindNearbySection() {
   const btn = $('#nearbyCtaBtn');
   if (!btn) return;
-  btn.onclick = () => {
-    const locInput = $('#locationFilter');
-    if (locInput && locInput.value.trim()) {
-      $('#content')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    } else {
-      document.querySelector('.hero-banner')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      setTimeout(() => locInput && locInput.focus(), 400);
-    }
-  };
+  btn.onclick = startNearby;
 }
 
 // ---------- Impact Tracker collapsed tab + slide-out panel ----------
@@ -1775,6 +1869,7 @@ async function loadItems(append = false) {
   if (state.priceType) params.set('price_type', state.priceType);
   if (state.q) params.set('q', state.q);
   if (state.location) params.set('location', state.location);
+  if (state.nearby) { params.set('lat', state.nearby.lat); params.set('lng', state.nearby.lng); params.set('radius_km', NEARBY_RADIUS_KM); }
   if (state.urgentOnly) params.set('urgent', '1');
   if (state.sort) params.set('sort', state.sort);
   params.set('page', state.itemsPage);
@@ -1831,17 +1926,30 @@ function renderGrid() {
     bindLoadMoreButton(el, 'requests');
     return;
   }
+  const nearbyBar = state.nearby
+    ? `<div class="nearby-active-bar"><span>📍 Showing listings within ${NEARBY_RADIUS_KM} km of your location</span><button type="button" class="ghost" id="nearbyClearBtn">Clear</button></div>`
+    : '';
+  const bindNearbyClear = () => { const c = $('#nearbyClearBtn'); if (c) c.onclick = clearNearby; };
   if (!state.items.length) {
-    el.innerHTML = title + `<div class="empty-state compact">
+    el.innerHTML = title + nearbyBar + (state.nearby
+      ? `<div class="empty-state compact">
+      <div class="empty-state-icon">📍</div>
+      <h3>No listings within ${NEARBY_RADIUS_KM} km yet</h3>
+      <p>Try searching by area or city instead, or be the first to post near you.</p>
+      <button class="primary-btn" id="gridEmptyPostBtn">Post an item</button>
+    </div>`
+      : `<div class="empty-state compact">
       <div class="empty-state-icon">🌱</div>
       <h3>Nothing has been posted yet</h3>
       <p>Be the first person to give something a new home.</p>
       <button class="primary-btn" id="gridEmptyPostBtn">Post an item</button>
-    </div>`;
+    </div>`);
     const btn = $('#gridEmptyPostBtn'); if (btn) btn.onclick = () => $('#postBtn').click();
+    bindNearbyClear();
     return;
   }
-  el.innerHTML = title + `<div class="grid">${state.items.map(cardHtml).join('')}</div>` + loadMoreHtml(state.itemsHasMore, 'items');
+  el.innerHTML = title + nearbyBar + `<div class="grid">${state.items.map(cardHtml).join('')}</div>` + loadMoreHtml(state.itemsHasMore, 'items');
+  bindNearbyClear();
   el.querySelectorAll('.card').forEach(c => c.onclick = () => openDetail(c.dataset.id));
   bindWishlistButtons(el);
   bindLoadMoreButton(el, 'items');
@@ -2249,7 +2357,7 @@ function openAuthModal(mode) {
       <input id="authLocation" name="location" placeholder="e.g. Hyderabad" autocomplete="address-level2">
       <div class="checkbox-row">
         <input type="checkbox" id="authTerms" required>
-        <label for="authTerms">I agree to the <a href="/terms.html" target="_blank" rel="noopener" style="color:var(--brand);font-weight:600">Terms &amp; Privacy Policy</a></label>
+        <label for="authTerms">I agree to the <a href="/terms.html" target="_blank" rel="noopener" style="color:var(--brand);font-weight:600">Terms &amp; Policies</a></label>
       </div>` : ''}
 
       <div class="error" id="authError" role="alert" aria-live="polite"></div>
@@ -2278,7 +2386,7 @@ function openAuthModal(mode) {
     if (!isLogin) {
       if (fd.password !== fd.confirmPassword) { errEl.textContent = 'Passwords do not match.'; return; }
       if (fd.password.length < 6) { errEl.textContent = 'Password must be at least 6 characters.'; return; }
-      if (!$('#authTerms').checked) { errEl.textContent = 'Please accept the Terms & Privacy Policy to continue.'; return; }
+      if (!$('#authTerms').checked) { errEl.textContent = 'Please accept the Terms & Policies to continue.'; return; }
     }
 
     const btn = $('#authSubmit');
@@ -2666,6 +2774,7 @@ function openPostModal(options) {
         <div id="bizSurplusExtra"></div>
       </div>
 
+      <div id="foodSafetyAckWrap"></div>
       <div class="error" id="postError"></div>
       <div class="post-form-footer">
         <p class="hint post-privacy-note">🔒 Your exact pickup address is never shown publicly.</p>
@@ -2736,6 +2845,9 @@ function openPostModal(options) {
     // 'Food (Surplus)' is always edible; for 'Food & Organic Waste' (which mixes real surplus
     // food with genuine inedible waste like compost material) the donor says which this is.
     const edible = category === 'Food (Surplus)' || (showEdibleToggle && $('#isEdibleFood') && $('#isEdibleFood').checked);
+    // Food Rescue safety confirmation (edible food only) sits right above the Post button.
+    const ackWrap = $('#foodSafetyAckWrap');
+    if (ackWrap) ackWrap.innerHTML = edible ? foodSafetyProviderHtml() : '';
     const fieldsBlock = $('#foodFieldsBlock');
     if (fieldsBlock) {
       fieldsBlock.innerHTML = edible ? `
@@ -2750,7 +2862,7 @@ function openPostModal(options) {
   }
   function renderFoodExtra() {
     const category = $('#postCategory').value;
-    if (!FOOD_CATEGORIES_FRONT.includes(category)) { foodExtra.innerHTML = ''; return; }
+    if (!FOOD_CATEGORIES_FRONT.includes(category)) { foodExtra.innerHTML = ''; const w = $('#foodSafetyAckWrap'); if (w) w.innerHTML = ''; return; }
     const showEdibleToggle = category === 'Food & Organic Waste';
     foodExtra.innerHTML = `
       ${showEdibleToggle ? `<label><input type="checkbox" id="isEdibleFood" style="width:auto;display:inline-block;margin-right:6px">This is edible surplus food (not waste for composting/feed)</label>` : ''}
@@ -2780,6 +2892,13 @@ function openPostModal(options) {
     e.preventDefault();
     const submitBtn = e.target.querySelector('button[type="submit"]');
     if (submitBtn.disabled) return; // guard against double-tap/double-click firing two submits
+    // Edible food needs the safety confirmation ticked (the server enforces this as well).
+    const foodAck = document.getElementById('foodSafetyAck');
+    if (foodAck && !foodAck.checked) {
+      $('#postError').textContent = 'Please confirm the food safety statement before posting.';
+      foodAck.focus();
+      return;
+    }
     submitBtn.disabled = true;
     const fd = new FormData(e.target);
     fd.set('is_recurring', $('#isRecurring').checked ? 'true' : 'false');
@@ -2879,6 +2998,30 @@ function claimStatusPanelHtml(claim, isFoodRescue) {
   </div>`;
 }
 
+// ---------- Food Rescue safety notices (provider + recipient) ----------
+// The server enforces both acknowledgements (see FOOD_SAFETY_ACK_VERSION in server.js); this is the UI.
+// LEGAL NOTE (internal, not shown to users): final wording must be reviewed by an Indian lawyer
+// (platform/intermediary, consumer protection, food safety, e-commerce) before production launch.
+function foodSafetyProviderHtml() {
+  return `<div class="food-safety-box" id="foodSafetyBox">
+    <strong>⚠️ Food safety</strong>
+    <p>Only share food that you believe is safe to consume. Food providers are responsible for giving accurate information about the food, including preparation, packaging, storage, allergens and availability, to the best of their knowledge. Zineedo does not prepare, inspect, store or transport food and does not guarantee its safety, freshness, quality or suitability.</p>
+    <label class="food-safety-check"><input type="checkbox" id="foodSafetyAck" name="food_safety_ack" value="true"><span>I confirm that the information I have provided about this food is accurate to the best of my knowledge and that I am responsible for complying with applicable food-safety requirements.</span></label>
+    <a class="food-safety-link" href="/terms.html#food-rescue-safety" target="_blank" rel="noopener">Read the full Food Rescue terms</a>
+  </div>`;
+}
+function foodSafetyRecipientHtml() {
+  return `<div class="food-safety-box" id="foodSafetyBox">
+    <strong>⚠️ Before you accept</strong>
+    <p>Please inspect the food and consider its freshness, storage, handling, ingredients and allergens before consuming it. Do not consume food that appears spoiled, smells unusual, has been improperly stored, or looks contaminated or otherwise unsafe.</p>
+    <p><b>Allergen notice:</b> food may contain allergens or ingredients that are not fully known or listed. If you have a food allergy or dietary restriction, verify the ingredients with the provider and do not consume the food if you are uncertain.</p>
+    <p>Zineedo does not guarantee food safety. If you have a concern about this food, use Report and choose “Food safety concern”.</p>
+    <label class="food-safety-check"><input type="checkbox" id="foodSafetyAck"><span>I understand that Zineedo does not guarantee the safety, freshness, ingredients or suitability of Food Rescue food. I will assess the food before consuming it and accept the associated risks to the extent permitted by applicable law.</span></label>
+    <a class="food-safety-link" href="/terms.html#food-rescue-safety" target="_blank" rel="noopener">Read the full Food Rescue terms</a>
+  </div>`;
+}
+function itemIsEdibleFood(item) { return item.category === 'Food (Surplus)' || Number(item.is_edible_food) === 1; }
+
 // Confirmation step between "Request this item" / "I can help" and the actual API call — shows
 // exactly what's being requested (thumbnail, title, price/urgent state, the typed message) so
 // nothing is submitted by accident, then performs the real POST /api/items/:id/claim call (same
@@ -2886,6 +3029,7 @@ function claimStatusPanelHtml(claim, isFoodRescue) {
 // click can't fire two requests, and surfaces any server error (stale "no longer available",
 // network failure, etc.) inline instead of a dead end.
 function openClaimConfirmModal(item, message, isFoodRescue) {
+  const needsFoodAck = itemIsEdibleFood(item);
   const actionLabel = isFoodRescue ? 'I can help' : item.price_type === 'paid' ? 'Request to buy' : item.price_type === 'exchange' ? 'Propose exchange' : item.price_type === 'rent' ? 'Request to rent' : 'Request this item';
   showModal(`
     <h2>${isFoodRescue ? '🍱 Confirm — I can help' : 'Confirm your request'}</h2>
@@ -2898,6 +3042,8 @@ function openClaimConfirmModal(item, message, isFoodRescue) {
     </div>
     ${isFoodRescue && item.is_urgent ? `<div class="emergency-note" style="background:#FFF4EF;border-color:#FBD9C6;color:#A23B12">🔥 This is marked urgent — please only confirm if you can collect it in time.</div>` : ''}
     <div class="hint" style="margin-top:10px">${message ? `Your message: "${escapeHtml(message)}"` : 'No message added.'}</div>
+    ${(!isFoodRescue && item.price_type === 'paid') ? `<div class="emergency-note" style="background:#FFF4EF;border-color:#FBD9C6;color:#8A3410">💳 Payments made directly between users are your responsibility. Zineedo does not guarantee or insure payments made outside a Zineedo-controlled payment system. Never share your OTP, UPI PIN or password. <a href="/terms.html#payments" target="_blank" rel="noopener" style="color:inherit;font-weight:600">Learn more</a></div>` : ''}
+    ${needsFoodAck ? foodSafetyRecipientHtml() : ''}
     <div class="error" id="claimConfirmError"></div>
     <div class="post-form-actions" style="margin-top:16px">
       <button type="button" class="ghost" id="claimConfirmBack">← Back</button>
@@ -2906,15 +3052,23 @@ function openClaimConfirmModal(item, message, isFoodRescue) {
   `, 'detail-modal');
   $('#claimConfirmBack').onclick = () => openDetail(item.id, message);
   const submitBtn = $('#claimConfirmSubmit');
+  // Edible food: the confirm button stays disabled until the safety checkbox is ticked (the server
+  // re-checks this too, so editing the page can't skip it).
+  const foodAckBox = needsFoodAck ? $('#foodSafetyAck') : null;
+  if (foodAckBox) {
+    submitBtn.disabled = true;
+    foodAckBox.onchange = () => { submitBtn.disabled = !foodAckBox.checked; };
+  }
   submitBtn.onclick = async () => {
     // Guards accidental double-submit (double-click, double-tap) — once disabled, repeat clicks
     // while the first request is still in flight are simply ignored rather than firing again.
     if (submitBtn.disabled) return;
+    if (foodAckBox && !foodAckBox.checked) return;
     submitBtn.disabled = true;
     const original = submitBtn.textContent;
     submitBtn.textContent = 'Sending…';
     try {
-      await api(`/api/items/${item.id}/claim`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ message }) });
+      await api(`/api/items/${item.id}/claim`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ message, food_safety_ack: foodAckBox ? foodAckBox.checked : undefined }) });
       closeModal();
       showToast(isFoodRescue ? 'Your offer to help was sent!' : 'Request sent to the owner!', 'success');
       loadTrending();
@@ -2924,7 +3078,7 @@ function openClaimConfirmModal(item, message, isFoodRescue) {
       // returns) and a network failure (api() throws there too) — either way, the message typed in
       // survives (still held in this closure) and the button re-enables so the user can retry.
       $('#claimConfirmError').textContent = err.message || 'Something went wrong. Please check your connection and try again.';
-      submitBtn.disabled = false;
+      submitBtn.disabled = foodAckBox ? !foodAckBox.checked : false;
       submitBtn.textContent = original;
     }
   };
@@ -3417,6 +3571,7 @@ const REPORT_CATEGORIES = [
   { key: 'fake_profile', label: 'Fake profile' },
   { key: 'asking_for_money', label: 'Asking for money' },
   { key: 'unsafe_behavior', label: 'Unsafe behavior' },
+  { key: 'food_safety', label: 'Food safety concern' },
   { key: 'other', label: 'Other' }
 ];
 function reportCategoryLabel(key) { return (REPORT_CATEGORIES.find(c => c.key === key) || {}).label || key; }

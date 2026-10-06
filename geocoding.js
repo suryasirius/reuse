@@ -74,6 +74,28 @@ function precisionFromResultType(resultType) {
   return 'approximate';
 }
 
+// PUBLIC LABEL (privacy): the label returned here ends up saved as users.location and shown to every
+// visitor on cards, listing pages and profiles. Geoapify's `formatted` string can contain a house
+// number and street ("12, Gandhi Street, Arakkonam, ..."), so it must NEVER be used as that label.
+// Instead the label is rebuilt from only the area / city / state fields of the result:
+//   area + city  -> "T Nagar, Chennai"        city + state -> "Arakkonam, Tamil Nadu"
+// housenumber / street / postcode / name / formatted are deliberately never read. Returns
+// { label, precision } or null when the result has no usable area/city/state (the caller then
+// treats it as not found rather than falling back to a precise address).
+function publicLocationFromProperties(p) {
+  if (!p) return null;
+  const clean = v => (typeof v === 'string' ? v.trim() : '');
+  const area = clean(p.suburb) || clean(p.neighbourhood) || clean(p.quarter);
+  const place = clean(p.city) || clean(p.town) || clean(p.village) || clean(p.municipality) || clean(p.county);
+  const state = clean(p.state);
+  let label = '', precision = 'city';
+  if (area && place && area.toLowerCase() !== place.toLowerCase()) { label = `${area}, ${place}`; precision = 'neighborhood'; }
+  else if (place) { label = state && state.toLowerCase() !== place.toLowerCase() ? `${place}, ${state}` : place; }
+  else if (area) { label = state ? `${area}, ${state}` : area; precision = 'neighborhood'; }
+  else if (state) { label = state; }
+  return label ? { label, precision } : null;
+}
+
 // Forward geocode: free text -> { status, lat, lng }.
 // status is one of: 'ok' | 'skipped' (blank input) | 'not_configured' (no GEOAPIFY_KEY) |
 // 'not_found' (provider returned zero results) | 'rate_limited' (HTTP 429) | 'timeout' |
@@ -119,10 +141,9 @@ async function reverseGeocode(lat, lng) {
     if (!res.ok) return { status: 'failed', label: null, precision: null };
     const data = await res.json();
     const feature = firstFeature(data);
-    if (!feature || typeof feature.properties.formatted !== 'string' || !feature.properties.formatted.trim()) {
-      return { status: 'not_found', label: null, precision: null };
-    }
-    return { status: 'ok', label: feature.properties.formatted, precision: precisionFromResultType(feature.properties.result_type) };
+    const pub = feature ? publicLocationFromProperties(feature.properties) : null;
+    if (!pub) return { status: 'not_found', label: null, precision: null };
+    return { status: 'ok', label: pub.label, precision: pub.precision };
   } catch (err) {
     return { status: err && err.name === 'AbortError' ? 'timeout' : 'failed', label: null, precision: null };
   } finally {
@@ -155,15 +176,20 @@ async function searchPlaces(text) {
     if (!res.ok) return { status: 'failed', results: [] };
     const data = await res.json();
     const features = data && Array.isArray(data.features) ? data.features : [];
-    const results = features
-      .filter(f => f && f.properties && typeof f.properties.formatted === 'string')
-      .map(f => ({
-        label: f.properties.formatted,
-        lat: f.properties.lat,
-        lng: f.properties.lon,
-        precision: precisionFromResultType(f.properties.result_type)
-      }))
-      .filter(r => isValidLat(r.lat) && isValidLng(r.lng));
+    // Labels are rebuilt from area/city/state only (see publicLocationFromProperties), so several
+    // street-level hits in the same area collapse to one label — keep the first of each.
+    const seen = new Set();
+    const results = [];
+    for (const f of features) {
+      if (!f || !f.properties) continue;
+      const pub = publicLocationFromProperties(f.properties);
+      const lat = f.properties.lat, lng = f.properties.lon;
+      if (!pub || !isValidLat(lat) || !isValidLng(lng)) continue;
+      const key = pub.label.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      results.push({ label: pub.label, lat, lng, precision: pub.precision });
+    }
     if (!results.length) return { status: 'not_found', results: [] };
     return { status: 'ok', results };
   } catch (err) {
@@ -173,4 +199,4 @@ async function searchPlaces(text) {
   }
 }
 
-module.exports = { geocodeText, reverseGeocode, searchPlaces, isGeocodingConfigured, isValidLat, isValidLng, fuzzCoordinate };
+module.exports = { publicLocationFromProperties, geocodeText, reverseGeocode, searchPlaces, isGeocodingConfigured, isValidLat, isValidLng, fuzzCoordinate };

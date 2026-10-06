@@ -3,15 +3,46 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Terms & Privacy — Zineedo</title>
+<title>Terms & Policies — Zineedo</title>
 <link rel="icon" type="image/png" sizes="32x32" href="/assets/brand/zineedo-mark-32.png">
 <link rel="stylesheet" href="/styles.css">
 <style>
-  .terms-page{max-width:720px;margin:0 auto;padding:40px 20px;line-height:1.6}
-  .terms-page h1{font-size:22px;margin-bottom:6px}
-  .terms-page h2{font-size:16px;margin-top:28px}
-  .terms-page p, .terms-page li{color:var(--muted);font-size:14px}
-  .terms-page a{color:var(--green);font-weight:600}
+  .terms-page{max-width:780px;margin:0 auto;padding:32px 20px 48px;line-height:1.65;overflow-wrap:anywhere}
+  .terms-page h1{font-size:26px;margin:0 0 6px}
+  .terms-page .updated{color:var(--muted);font-size:13px;margin:0 0 18px}
+  .terms-page h2{font-size:17px;margin:0 0 10px;scroll-margin-top:16px;color:var(--text)}
+  .terms-page h2 .n{color:var(--brand);margin-right:6px}
+  .terms-page p, .terms-page li{color:var(--meta);font-size:14.5px}
+  .terms-page p{margin:0 0 10px}
+  .terms-page ul{margin:0 0 10px;padding-left:20px}
+  .terms-page li{margin-bottom:4px}
+  .terms-page a{color:var(--brand);font-weight:600}
+  .terms-page section{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:18px 20px;margin-top:14px;box-shadow:var(--shadow-xs)}
+  .terms-page section > :last-child{margin-bottom:0}
+  .terms-intro{margin-top:0}
+  .terms-toc{background:var(--brand-light);border:1px solid var(--border);border-radius:14px;padding:12px 16px;margin:16px 0 4px}
+  .terms-toc summary{cursor:pointer;font-weight:700;font-size:14px;color:var(--accent-dark)}
+  .terms-toc ol{margin:10px 0 2px;padding-left:22px;columns:2;column-gap:28px}
+  .terms-toc li{font-size:13.5px;break-inside:avoid;margin-bottom:3px}
+  .callout{border-radius:12px;padding:14px 16px;margin:12px 0}
+  .callout strong.t{display:block;font-size:14.5px;margin-bottom:6px}
+  .callout p{margin-bottom:8px}
+  .callout.food{background:#FFF8E6;border:1px solid #F1DFA8}
+  .callout.food strong.t,.callout.food p{color:#5C4400}
+  .callout.pay{background:#FFF4EF;border:1px solid #FBD9C6}
+  .callout.pay strong.t,.callout.pay p{color:#8A3410}
+  .terms-page section.hl-food{border-color:#F1DFA8}
+  .terms-page section.hl-pay{border-color:#FBD9C6}
+  .ph{background:#FFF3B0;color:#5C4400;border-radius:4px;padding:0 4px;font-weight:600}
+  .terms-back{margin-top:28px}
+  @media (max-width:600px){
+    .terms-page{padding:18px 0 40px;gap:0}
+    .terms-page section{margin-top:12px}
+    .terms-page h1{font-size:22px}
+    .terms-page section{padding:16px 15px;border-radius:12px}
+    .terms-toc ol{columns:1}
+    .terms-page p,.terms-page li{font-size:15px}
+  }
 </style>
 </head>
 <body>
@@ -19,25 +50,258 @@
   <a class="logo" href="/"><img src="/assets/brand/zineedo-mark.svg" alt="" width="24" height="24" style="vertical-align:middle;margin-right:8px"> Zineedo</a>
 </header>
 <main class="terms-page">
-  <h1>Terms of use & privacy</h1>
-  <p>This is a plain-language summary, not a formal legal document. If you run this site for real users, have a lawyer review a proper terms of service and privacy policy before launch.</p>
+  <!-- LEGAL NOTE (internal, not for users): this whole page is a product draft. Have qualified Indian legal
+       counsel review and finalise it before production launch (IT Act 2000 / Intermediary Guidelines 2021,
+       Consumer Protection Act 2019 and E-Commerce Rules 2020, FSSAI / Food Safety and Standards Act 2006,
+       DPDP Act 2023, indemnity, limitation of liability, governing law and grievance officer details). -->
+  <h1>Terms &amp; Policies</h1>
+  <p class="updated">Last updated: 5 October 2026</p>
 
-  <h2>What this site does</h2>
-  <p>Zineedo lets people post things they don't want (or want to rent out) and lets other people request them. The site only facilitates the connection between two people — it does not handle payment, delivery, or guarantee the condition of any item.</p>
+  <section class="terms-intro">
+    <h2 id="introduction"><span class="n">1.</span>Introduction</h2>
+    <p>Zineedo is an online platform and community marketplace where people can give items, sell items, exchange items, request items, offer services, list business surplus, take part in Food Rescue, and communicate and arrange transactions with one another.</p>
+    <p>By accessing or using Zineedo, you agree to these Terms &amp; Policies and to the laws that apply to you. If you do not agree, please do not use Zineedo.</p>
+    <details class="terms-toc" id="tocBox" open>
+      <summary>Jump to a section</summary>
+      <ol>
+        <li><a href="#introduction">Introduction</a></li>
+        <li><a href="#role">Zineedo's role</a></li>
+        <li><a href="#responsibility">User responsibility</a></li>
+        <li><a href="#used-goods">Used goods</a></li>
+        <li><a href="#services">Services</a></li>
+        <li><a href="#food-rescue-safety">Food Rescue &amp; food safety</a></li>
+        <li><a href="#food-providers">Food provider responsibility</a></li>
+        <li><a href="#no-certification">No food-safety certification</a></li>
+        <li><a href="#payments">Payments &amp; financial transactions</a></li>
+        <li><a href="#scam-warning">Payment scam warning</a></li>
+        <li><a href="#privacy">Personal information &amp; privacy</a></li>
+        <li><a href="#pickup">Transactions &amp; pickup</a></li>
+        <li><a href="#fraud">Fraud &amp; scams</a></li>
+        <li><a href="#prohibited">Prohibited content &amp; activities</a></li>
+        <li><a href="#content">User content</a></li>
+        <li><a href="#reviews">Ratings &amp; reviews</a></li>
+        <li><a href="#verification">Verification &amp; badges</a></li>
+        <li><a href="#moderation">Platform moderation</a></li>
+        <li><a href="#third-party">Third-party conduct</a></li>
+        <li><a href="#disclaimer">General disclaimer</a></li>
+        <li><a href="#liability">Limitation of liability</a></li>
+        <li><a href="#indemnity">User indemnification</a></li>
+        <li><a href="#account-security">Account security</a></li>
+        <li><a href="#suspension">Suspension &amp; termination</a></li>
+        <li><a href="#changes">Changes to these Terms</a></li>
+        <li><a href="#governing-law">Governing law</a></li>
+        <li><a href="#contact">Grievance &amp; contact</a></li>
+      </ol>
+    </details>
+  </section>
 
-  <h2>Your account</h2>
-  <p>You're responsible for the accuracy of what you post and for arranging pickup, payment, and any deposit directly with the other person. Don't post anything illegal, stolen, unsafe, or that you don't have the right to give away, sell, exchange, or rent out.</p>
+  <section id="s-role">
+    <h2 id="role"><span class="n">2.</span>Zineedo's role</h2>
+    <p>Zineedo provides the technology that lets users find each other and arrange transactions. Unless Zineedo specifically says otherwise, Zineedo is not the seller, buyer, owner of listed goods, manufacturer, service provider, food producer, food preparer, food transporter, delivery provider, or guarantor of another user's conduct.</p>
+    <p>Zineedo does not guarantee that every listing, user, item, service or Food Rescue posting is accurate, safe, genuine, suitable or available.</p>
+    <p>This does not mean Zineedo has no legal obligations. Zineedo may have responsibilities under applicable law, and may take reasonable measures to operate, moderate and protect the platform.</p>
+  </section>
 
-  <h2>Your data</h2>
-  <p>We store your name, email, password (hashed, never in plain text), account type, and location if you provide one. Your name, account type, and location are shown to other users. Your email is only shown to someone you've directly transacted with (e.g. accepted their request), so they can contact you.</p>
+  <section id="s-responsibility">
+    <h2 id="responsibility"><span class="n">3.</span>User responsibility</h2>
+    <p>You are responsible for everything you post, communicate, offer or agree to through Zineedo, including:</p>
+    <ul>
+      <li>listing information and photographs</li>
+      <li>item condition, prices and quantity</li>
+      <li>service descriptions</li>
+      <li>food information</li>
+      <li>availability</li>
+      <li>pickup, delivery and payment arrangements</li>
+      <li>your communications with other users</li>
+    </ul>
+    <p>You must provide truthful and accurate information and comply with applicable laws.</p>
+  </section>
 
-  <h2>Safety</h2>
-  <p>Meet in public places for pickups when possible, especially for higher-value items. Use the Report button on any post or user that seems suspicious, fake, or unsafe.</p>
+  <section id="s-used-goods">
+    <h2 id="used-goods"><span class="n">4.</span>Used goods</h2>
+    <p>Used products can have normal wear, damage, hidden defects, missing parts, unknown history, age-related deterioration or safety issues. Inspect items before accepting them whenever reasonably possible.</p>
+    <p>Unless Zineedo expressly states otherwise, Zineedo does not guarantee the condition, authenticity, safety, durability, suitability or performance of any item.</p>
+    <p>You must not list stolen, counterfeit, illegal or prohibited goods.</p>
+  </section>
 
-  <h2>Changes</h2>
-  <p>This page may change as the site evolves. Continued use of the site means you accept the current version.</p>
+  <section id="s-services">
+    <h2 id="services"><span class="n">5.</span>Services</h2>
+    <p>Service providers are responsible for the quality of their services, their qualifications, licences and permits where required, pricing, safety, performance, the representations they make, and compliance with applicable law.</p>
+    <p>Customers should independently verify a provider's suitability and qualifications before engaging them.</p>
+    <p>Subject to applicable law, Zineedo does not guarantee the outcome, quality, availability, qualifications or performance of any third-party service provider.</p>
+  </section>
 
-  <p style="margin-top:32px"><a href="/">&larr; Back to Zineedo</a></p>
+  <section id="s-food" class="hl-food">
+    <h2 id="food-rescue-safety"><span class="n">6.</span>Food Rescue &amp; food safety</h2>
+    <p>Food Rescue may involve surplus food from restaurants, shops, businesses, caterers, weddings, parties, events, homes and other providers.</p>
+    <p>Unless explicitly stated otherwise, Zineedo does not prepare, manufacture, inspect, store, transport or certify Food Rescue food. Zineedo does not guarantee its freshness, hygiene, storage conditions, temperature control, ingredients, allergen information, preparation conditions, shelf life, freedom from contamination, or suitability for consumption.</p>
+    <div class="callout food" role="note">
+      <strong class="t">⚠️ Food Safety Warning</strong>
+      <p>Food Rescue items may carry risks associated with preparation, handling, storage, transportation, spoilage, contamination, allergens, unknown ingredients or other food-safety conditions.</p>
+      <p>Recipients are responsible for independently assessing food before accepting or consuming it.</p>
+      <p>Do not consume food that appears spoiled, contaminated, improperly stored, has an unusual smell or appearance, or otherwise appears unsafe. Do not try a small amount first.</p>
+      <p><strong>Allergens:</strong> if you have a food allergy, dietary restriction or other concern, independently verify the ingredients and suitability before consuming the food. Food may contain allergens or ingredients that are not fully known or listed.</p>
+      <p>By accepting or consuming Food Rescue food, you acknowledge these risks and do so at your own discretion and risk, to the maximum extent permitted by applicable law.</p>
+    </div>
+    <p>This applies equally to free and low-cost food. If you have a concern about a listing, use Report and choose “Food safety concern”.</p>
+  </section>
+
+  <section id="s-food-providers" class="hl-food">
+    <h2 id="food-providers"><span class="n">7.</span>Food provider responsibility</h2>
+    <p>Food providers are responsible for giving accurate information to the best of their knowledge, including where relevant the type of food, quantity, preparation information, available-until time, storage information, ingredients, known allergens and any relevant restrictions.</p>
+    <p>Providers must comply with applicable food-safety laws and requirements. Posting food on Zineedo is not itself a food-safety certification.</p>
+  </section>
+
+  <section id="s-no-cert">
+    <h2 id="no-certification"><span class="n">8.</span>No Zineedo food-safety certification</h2>
+    <p>A Food Rescue listing, a Food Rescuer badge, a verified account or any other Zineedo status does not mean that Zineedo has certified, inspected or guaranteed the safety of the food.</p>
+  </section>
+
+  <section id="s-payments" class="hl-pay">
+    <h2 id="payments"><span class="n">9.</span>Payments &amp; financial transactions</h2>
+    <p>Where users transact directly with each other:</p>
+    <ul>
+      <li>you are responsible for verifying the other party;</li>
+      <li>you are responsible for verifying payment details and confirming that money has actually been received;</li>
+      <li>you should exercise caution before transferring money;</li>
+      <li>Zineedo does not guarantee that a buyer will pay, or that a seller will deliver or perform after being paid;</li>
+      <li>Zineedo does not guarantee refunds between users, unless a Zineedo-operated payment or refund system expressly applies.</li>
+    </ul>
+    <div class="callout pay" role="note">
+      <strong class="t">Payments between users</strong>
+      <p>Transactions and payments made directly between users are your responsibility. Zineedo does not guarantee or insure payments made outside a Zineedo-controlled payment system.</p>
+    </div>
+    <p>If Zineedo later introduces its own payment system, the terms of that system will apply to it, and nothing here excludes any responsibility that the law places on Zineedo for it.</p>
+  </section>
+
+  <section id="s-scam" class="hl-pay">
+    <h2 id="scam-warning"><span class="n">10.</span>Payment scam warning</h2>
+    <div class="callout pay" role="note">
+      <strong class="t">🚫 Never share your security details</strong>
+      <p>Never share your OTP, password, UPI PIN, card PIN, CVV, banking password or any other security credential with another user or with anyone claiming to represent Zineedo.</p>
+    </div>
+    <p>Be alert to:</p>
+    <ul>
+      <li>fake payment screenshots</li>
+      <li>phishing messages</li>
+      <li>fake refund requests</li>
+      <li>UPI scams, including “collect” requests dressed up as refunds</li>
+      <li>impersonation of buyers, sellers or Zineedo</li>
+      <li>advance-payment scams</li>
+      <li>malicious links</li>
+    </ul>
+    <p>If something feels wrong, stop and use Report.</p>
+  </section>
+
+  <section id="s-privacy">
+    <h2 id="privacy"><span class="n">11.</span>Personal information &amp; privacy</h2>
+    <p>Do not unnecessarily post or share Aadhaar or PAN details, passwords, OTPs, UPI PINs, CVVs, bank credentials, identity documents, other sensitive personal information, or unnecessary home-address details. Share only what is needed to complete the transaction.</p>
+    <p>Zineedo cannot control information that you voluntarily share directly with another user.</p>
+    <p><strong>What we store.</strong> We store your name, email, password (hashed, never in plain text), account type, and location if you provide one. Your name, account type and location are shown to other users. Your email is shown only to someone you have directly transacted with (for example, whose request you have accepted), so they can contact you.</p>
+    <p>Information may be processed or disclosed in accordance with Zineedo's privacy practices, your permissions where applicable, platform requirements and applicable law. This section is a summary; a separate, fuller Privacy Policy is to be published and will govern how Zineedo itself processes personal data <span class="ph">[PRIVACY POLICY LINK — TO BE ADDED]</span>.</p>
+  </section>
+
+  <section id="s-pickup">
+    <h2 id="pickup"><span class="n">12.</span>Transactions &amp; pickup</h2>
+    <p>Unless Zineedo explicitly provides a delivery service, pickup and delivery are arranged between users. You are responsible for the location, timing, transportation, packaging, handover and safe handling. Where possible, meet in a public place, especially for higher-value items.</p>
+    <p>For Food Rescue, take additional care with how food is handled, kept and transported.</p>
+  </section>
+
+  <section id="s-fraud">
+    <h2 id="fraud"><span class="n">13.</span>Fraud &amp; scams</h2>
+    <p>You must not, among other things:</p>
+    <ul>
+      <li>create fake listings or fake accounts;</li>
+      <li>impersonate others;</li>
+      <li>use fake payment proof;</li>
+      <li>deceive users or collect money fraudulently;</li>
+      <li>manipulate ratings;</li>
+      <li>ask for OTPs or passwords;</li>
+      <li>send malicious links;</li>
+      <li>sell stolen goods or conduct illegal transactions.</li>
+    </ul>
+    <p>Zineedo may suspend or restrict accounts involved in suspected fraud, subject to applicable law.</p>
+  </section>
+
+  <section id="s-prohibited">
+    <h2 id="prohibited"><span class="n">14.</span>Prohibited content &amp; activities</h2>
+    <p>The following are prohibited, including but not limited to: illegal goods; stolen goods; counterfeit goods; prohibited weapons; explosives; illegal drugs; hazardous materials; fraudulent documents; trading in personal data; illegal services; malicious content; and any other unlawful activity. The absence of something from this list does not mean it is allowed.</p>
+  </section>
+
+  <section id="s-content">
+    <h2 id="content"><span class="n">15.</span>User content</h2>
+    <p>You must have the right to upload the photographs, descriptions and other content you submit. Do not upload private documents, sensitive personal information, unlawful material, malicious files, or content you do not have the right to use.</p>
+    <p>Zineedo may remove content that violates these Terms or applicable law. You keep ownership of your content, and you give Zineedo the limited rights needed to host, display and operate the platform.</p>
+  </section>
+
+  <section id="s-reviews">
+    <h2 id="reviews"><span class="n">16.</span>Ratings &amp; reviews</h2>
+    <p>Ratings and reviews must be genuine. Fake reviews, paid reviews, review manipulation, retaliation, abusive reviews and coordinated manipulation are prohibited. Zineedo may moderate content according to its policies and applicable law.</p>
+  </section>
+
+  <section id="s-verification">
+    <h2 id="verification"><span class="n">17.</span>Verification &amp; badges</h2>
+    <p>“Verified” does not mean guaranteed safe, honest, financially reliable or professionally qualified. Verification means only the verification that Zineedo has actually performed. The Food Rescuer badge also does not certify food safety.</p>
+  </section>
+
+  <section id="s-moderation">
+    <h2 id="moderation"><span class="n">18.</span>Platform moderation</h2>
+    <p>Zineedo may remove or restrict listings, suspend or terminate accounts, investigate reports, remove prohibited content, restrict suspicious activity, and cooperate with lawful authorities. Zineedo does not promise that every listing or user is manually inspected.</p>
+  </section>
+
+  <section id="s-third-party">
+    <h2 id="third-party"><span class="n">19.</span>Third-party conduct</h2>
+    <p>Zineedo cannot guarantee the conduct of every user. You deal with other users at your own discretion and should take reasonable precautions when meeting or transacting with anyone.</p>
+  </section>
+
+  <section id="s-disclaimer">
+    <h2 id="disclaimer"><span class="n">20.</span>General disclaimer</h2>
+    <p>Zineedo is provided on an “as available” basis. Zineedo does not guarantee that all information, listings, users, goods, food, services or transactions will be accurate, safe, suitable, available, uninterrupted or error-free.</p>
+    <p>To the maximum extent permitted by applicable law, Zineedo is not responsible for losses arising from the independent acts, omissions, representations, goods, food, services, payments or conduct of other users or third parties.</p>
+    <p>Nothing in these Terms excludes or limits any liability, right or remedy that cannot lawfully be excluded or limited.</p>
+  </section>
+
+  <section id="s-liability">
+    <h2 id="liability"><span class="n">21.</span>Limitation of liability</h2>
+    <p>To the extent permitted by applicable law, Zineedo is not liable for indirect, incidental or consequential losses, or for loss caused by third-party conduct, user-to-user transaction disputes, unsafe user-listed goods, unsafe Food Rescue food, third-party services, or user-to-user payments.</p>
+    <p>Nothing in this section limits liability that cannot lawfully be limited, or any right you have under applicable law.</p>
+  </section>
+
+  <section id="s-indemnity">
+    <h2 id="indemnity"><span class="n">22.</span>User indemnification</h2>
+    <p>Subject to applicable law, you agree to indemnify Zineedo against claims, losses and expenses arising from your violation of these Terms, unlawful conduct, fraud, your content, your listings, your transactions, your Food Rescue or service activity, or your infringement of a third party's rights.</p>
+  </section>
+
+  <section id="s-account">
+    <h2 id="account-security"><span class="n">23.</span>Account security</h2>
+    <p>You are responsible for protecting your password, authentication codes, devices and sessions. Tell Zineedo promptly if you believe your account has been compromised.</p>
+  </section>
+
+  <section id="s-suspension">
+    <h2 id="suspension"><span class="n">24.</span>Account suspension &amp; termination</h2>
+    <p>Zineedo may suspend, restrict or terminate an account for fraud, abuse, prohibited activity, repeated violations, security risks or unlawful conduct. Any rights or procedures that the law requires will be preserved.</p>
+  </section>
+
+  <section id="s-changes">
+    <h2 id="changes"><span class="n">25.</span>Changes to these Terms</h2>
+    <p>Zineedo may update these Terms &amp; Policies. Material changes will be communicated appropriately, and the “Last updated” date above will change. Continued use of Zineedo after a change means you accept the current version.</p>
+  </section>
+
+  <section id="s-law">
+    <h2 id="governing-law"><span class="n">26.</span>Governing law</h2>
+    <p>These Terms are governed by the laws of India. Courts and other forums with jurisdiction: <span class="ph">[JURISDICTION TO BE CONFIRMED BY LEGAL COUNSEL]</span>. Nothing here removes any consumer or statutory right that cannot be waived.</p>
+  </section>
+
+  <section id="s-contact">
+    <h2 id="contact"><span class="n">27.</span>Grievance &amp; contact</h2>
+    <p>Legal entity name: <span class="ph">[COMPANY / LEGAL ENTITY NAME]</span><br>
+    Registered address: <span class="ph">[REGISTERED ADDRESS]</span><br>
+    Grievance Officer: <span class="ph">[NAME]</span><br>
+    Contact email: <span class="ph">[EMAIL]</span></p>
+    <p>You can also use the Report button on any listing or user to flag a problem, including “Food safety concern”.</p>
+  </section>
+
+  <p class="terms-back"><a href="/">&larr; Back to Zineedo</a></p>
 </main>
 </body>
 </html>
