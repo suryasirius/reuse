@@ -2625,3 +2625,21 @@ html,body{overflow-x:hidden;max-width:100%}
 .business-teaser-art svg path:last-of-type{stroke:#C9BAEF}
 .business-teaser-art svg line{stroke:#CDBFF0}
 .business-teaser-art svg circle{stroke:#6A4FC7}
+
+/* ================= Homepage section rhythm (spacing / heading hierarchy only) =================
+   One vertical gap between major sections and one heading scale, instead of per-section margins
+   that ranged from 1px to 56px. No colors, cards, content or behavior touched. */
+@media (min-width:601px){
+  .hero-banner,.food-rescue-hero,.stats-strip,.trending-wrap,.requests-services-grid,
+  .champions-section,.page-layout,.homepage-section{margin-bottom:36px}
+  .requests-services-grid .homepage-section,.requests-services-grid .highlight-wrap{margin-bottom:0}
+  .marketplace-columns{margin-bottom:0}
+  .trust-strip{margin-top:0}
+  .food-rescue-hero-title h2,.champions-head{font-size:20px}
+  .highlight-wrap .highlight-sub,.trending-wrap .highlight-sub{margin:0 0 14px}
+  .section-head{margin-bottom:16px}
+}
+@media (max-width:600px){
+  main{gap:20px}
+  .section-head h2,.content-title,.champions-head{font-size:17px}
+}
