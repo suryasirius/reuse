@@ -3301,8 +3301,17 @@ async function openDetail(id, prefillMessage) {
         </form>
       `}
       ${state.user ? `<p style="margin-top:10px"><a href="#" id="reportLink" style="color:#c0392b;font-size:12px">Report this post</a></p>` : ''}
+      ${state.user && state.user.is_admin && !unavailable ? `<div style="margin-top:14px;padding-top:12px;border-top:1px dashed var(--border)"><button type="button" class="primary-btn" id="adminCloseItemBtn" style="background:#c0392b;margin-top:0">🛡️ Admin: close this listing</button></div>` : ''}
     `}
   `, 'detail-modal');
+  const adminCloseItemBtn = $('#adminCloseItemBtn');
+  if (adminCloseItemBtn) adminCloseItemBtn.onclick = async () => {
+    if (!confirm('Close this listing as admin? It will no longer be available.')) return;
+    try {
+      await api('/api/admin/items/' + item.id + '/close', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ note: 'Closed by admin from the listing page' }) });
+      closeModal(); loadItems();
+    } catch (e) { alert(e.message); }
+  };
   if (isOwner) {
     $('#editItemBtn').onclick = () => openEditModal(item);
     $('#closeItemBtn').onclick = async () => {
@@ -3676,7 +3685,18 @@ async function openRequestDetail(id, prefill) {
       </form>
     `}
     ${!isOwner && state.user ? `<p style="margin-top:10px"><a href="#" id="reportRequestLink" style="color:#c0392b;font-size:12px">Report this post</a></p>` : ''}
+    ${!isOwner && state.user && state.user.is_admin && !unavailable ? `<div style="margin-top:14px;padding-top:12px;border-top:1px dashed var(--border)"><button type="button" class="primary-btn" id="adminCloseRequestBtn" style="background:#c0392b;margin-top:0">🛡️ Admin: close this request</button></div>` : ''}
   `);
+  const adminCloseReqBtn = $('#adminCloseRequestBtn');
+  if (adminCloseReqBtn) adminCloseReqBtn.onclick = async () => {
+    if (!confirm('Close this request as admin? It will no longer be open for offers.')) return;
+    try {
+      await api('/api/admin/requests/' + r.id + '/close', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ note: 'Closed by admin from the request page' }) });
+      closeModal(); loadRequests();
+      if (typeof loadUrgentRequests === 'function') loadUrgentRequests();
+      if (typeof loadServiceRequestsPreview === 'function') loadServiceRequestsPreview();
+    } catch (e) { alert(e.message); }
+  };
   if (isOwner) {
     $('#closeRequestBtn').onclick = async () => {
       await api('/api/requests/' + r.id, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: 'closed' }) });
