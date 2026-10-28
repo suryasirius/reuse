@@ -2695,3 +2695,26 @@ html,body{overflow-x:hidden;max-width:100%}
   }
   .hero-popular-row > *{scroll-snap-align:start}
 }
+
+/* ================= Calm pass (visual only) =================
+   Fewer competing effects: panels keep their soft tint + thin border but lose the extra tinted drop
+   shadow (the cards inside them already carry the depth), and on phones the grey scrollbar tracks
+   under swipeable rows are hidden (rows still swipe exactly the same). */
+.food-rescue-hero,
+.highlight-wrap.hl-urgent,.highlight-wrap.hl-service,
+.business-teaser,
+.collection-card,
+.quick-action-card{box-shadow:0 1px 2px rgba(20,30,20,.04)}
+
+@media (max-width:600px){
+  .food-rescue-row,
+  .hscroll,
+  .trending-wrap .grid,
+  .collections-grid,
+  .highlight-wrap .grid.hscroll{scrollbar-width:none;-ms-overflow-style:none}
+  .food-rescue-row::-webkit-scrollbar,
+  .hscroll::-webkit-scrollbar,
+  .trending-wrap .grid::-webkit-scrollbar,
+  .collections-grid::-webkit-scrollbar,
+  .highlight-wrap .grid.hscroll::-webkit-scrollbar{display:none;height:0}
+}
